@@ -1,0 +1,57 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install uv && uv pip install --system -e ".[dev]"
+      - run: ruff check .
+      - run: mypy app/
+
+  golden-set-test:
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install uv && uv pip install --system -e ".[dev]"
+      - run: pytest app/classifier/eval/golden.py -v
+        # Failure here blocks all downstream jobs
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: golden-set-test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Start stack
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+          sleep 30
+      - name: Health check
+        run: curl -f http://localhost:8000/health
+      - name: Register + login
+        run: |
+          curl -sf -X POST http://localhost:8000/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"email":"test@test.com","password":"TestPass123!"}'
+      - name: SFTP drop + verify prediction
+        run: |
+          scp -P 2222 -o StrictHostKeyChecking=no \
+            app/classifier/eval/golden_images/0001.tif \
+            uploader@localhost:uploads/
+          python scripts/smoke_check.py
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

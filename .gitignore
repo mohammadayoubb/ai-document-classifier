@@ -1,0 +1,32 @@
+# Environment — never committed (see .env.example for the template)
+.env
+.env.*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDEs
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Crypto / secrets
+*.pem
+*.key
+
+# Test artefacts
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+
+# Logs (runtime files, not source)
+logs/*.log

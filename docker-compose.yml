@@ -1,0 +1,127 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      target: api
+    ports: ["${API_PORT:-8000}:8000"]
+    env_file: .env
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_ROOT_TOKEN}
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/docclassifier
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      vault:   { condition: service_healthy }
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      target: worker
+    env_file: .env
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - VAULT_TOKEN=${VAULT_ROOT_TOKEN}
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/docclassifier
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    networks: [app-net]
+
+  sftp-ingest:
+    build:
+      context: .
+      target: sftp-ingest
+    env_file: .env
+    environment:
+      - SFTP_HOST=sftp
+      - SFTP_PORT=22
+      - SFTP_USER=uploader
+      - SFTP_PASSWORD=password
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio:9000
+    depends_on: [sftp, minio, redis]
+    networks: [app-net]
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/docclassifier
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [app-net]
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: docclassifier
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes: [minio_data:/data]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+
+  sftp:
+    image: atmoz/sftp
+    ports: ["${SFTP_PORT:-2222}:22"]
+    volumes: [sftp_uploads:/home/uploader/uploads]
+    command: uploader:password:::uploads
+    networks: [app-net]
+
+  vault:
+    image: hashicorp/vault:1.16
+    ports: ["${VAULT_PORT:-8200}:8200"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_ROOT_TOKEN:-root}
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add: [IPC_LOCK]
+    networks: [app-net]
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      retries: 10
+
+networks:
+  app-net:
+
+volumes:
+  postgres_data:
+  minio_data:
+  sftp_uploads:
