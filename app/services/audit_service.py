@@ -4,8 +4,8 @@ This service owns audit-log business operations.
 Routes should not create audit log rows directly.
 """
 
-from app.domain.audit import AuditLogDomain
-from app.repositories.user_repo import UserRepository
+from app.domain.audit import AuditAction, AuditLogDomain
+from app.repositories.audit_repo import AuditRepository
 
 
 class AuditService:
@@ -15,13 +15,13 @@ class AuditService:
     audit entries are created and exposed to the API layer.
     """
 
-    def __init__(self, user_repo: UserRepository) -> None:
-        self._user_repo = user_repo
+    def __init__(self, audit_repo: AuditRepository) -> None:
+        self._audit_repo = audit_repo
 
     async def record(
         self,
         actor_id: int,
-        action: str,
+        action: AuditAction,
         target: str,
         metadata: str | None = None,
     ) -> AuditLogDomain:
@@ -36,14 +36,14 @@ class AuditService:
         Returns:
             The created audit entry as a domain model.
         """
-        audit_entry = await self._user_repo.create_audit_entry(
+        audit_entry = await self._audit_repo.create(
             actor_id=actor_id,
-            action=action,
+            action=action.value,
             target=target,
             metadata=metadata,
         )
 
-        # Convert ORM object into a domain model before returning upward.
+        # Services return domain models, not raw SQLAlchemy ORM objects.
         return AuditLogDomain.model_validate(audit_entry)
 
     async def list_audit_log(self) -> list[AuditLogDomain]:
@@ -52,7 +52,7 @@ class AuditService:
         Returns:
             Audit log entries converted into domain models.
         """
-        entries = await self._user_repo.list_audit_log()
+        entries = await self._audit_repo.list_recent()
 
-        # Services return domain models, not raw SQLAlchemy ORM objects.
+        # Convert each ORM row into a Pydantic domain model before returning.
         return [AuditLogDomain.model_validate(entry) for entry in entries]

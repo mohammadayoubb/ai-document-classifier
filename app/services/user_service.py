@@ -6,6 +6,7 @@ audit logging, and safety checks.
 
 import json
 
+from app.domain.audit import AuditAction
 from app.domain.user import UserDomain, UserRole
 from app.repositories.user_repo import UserRepository
 from app.services.audit_service import AuditService
@@ -80,16 +81,16 @@ class UserService:
         if target_user is None:
             raise UserNotFoundError(f"User {target_user_id} was not found")
 
-        old_role = target_user.role
+        old_role = UserRole(target_user.role)
 
         # Safety rule: the system must always keep at least one active admin.
-        # This prevents a team from accidentally locking itself out.
+        # This prevents the only admin from locking the team out of role management.
         if (
             actor_id == target_user_id
             and old_role == UserRole.ADMIN
             and new_role != UserRole.ADMIN
         ):
-            admin_count = await self._user_repo.count_by_role(UserRole.ADMIN)
+            admin_count = await self._user_repo.count_by_role(UserRole.ADMIN.value)
 
             if admin_count <= 1:
                 raise CannotDemoteLastAdminError(
@@ -98,7 +99,7 @@ class UserService:
 
         updated_user = await self._user_repo.update_role(
             user_id=target_user_id,
-            new_role=new_role,
+            new_role=new_role.value,
         )
 
         if updated_user is None:
@@ -107,14 +108,17 @@ class UserService:
         # Role changes are audit-able events and must always be recorded.
         await self._audit_service.record(
             actor_id=actor_id,
-            action="role_change",
+            action=AuditAction.ROLE_CHANGE,
             target=f"user:{target_user_id}",
             metadata=json.dumps(
                 {
-                    "old_role": old_role,
-                    "new_role": new_role,
+                    "old_role": old_role.value,
+                    "new_role": new_role.value,
                 }
             ),
         )
+
+        # TODO: Inject CacheAdapter later and invalidate the target user's /users/me cache.
+        # Cache invalidation belongs here in the service layer, never in routes or repositories.
 
         return UserDomain.model_validate(updated_user)

@@ -82,7 +82,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the cached Settings singleton.
 
-    Returns:
-        The application settings instance.
+    Settings values are loaded from environment variables or .env.
+    mypy cannot see env-provided values, so we ignore the constructor call.
     """
-    return Settings()
+    return Settings()  # type: ignore[call-arg]

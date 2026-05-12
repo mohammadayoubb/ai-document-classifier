@@ -11,11 +11,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class UserRole(StrEnum):
-    """Allowed roles in the system.
-
-    Keeping roles as an enum prevents invalid role strings from spreading
-    through the codebase, such as "Admin", "manager", or "review".
-    """
+    """Allowed roles in the system."""
 
     ADMIN = "admin"
     REVIEWER = "reviewer"
@@ -23,11 +19,7 @@ class UserRole(StrEnum):
 
 
 class UserDomain(BaseModel):
-    """Read-only view of a user, returned by the service layer.
-
-    hashed_password is intentionally excluded because it must never appear
-    in API responses, logs, or cached response payloads.
-    """
+    """Read-only view of a user returned by the service layer."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -36,3 +28,12 @@ class UserDomain(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
+
+
+class UserRoleUpdateRequest(BaseModel):
+    """Request body for changing a user's role.
+
+    Role changes must go through the admin-only route so they can be audited.
+    """
+
+    new_role: UserRole

@@ -6,7 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
-class BatchStatus(str, enum.Enum):
+class BatchStatus(enum.StrEnum):
     """Possible lifecycle states of a document classification batch."""
 
     pending = "pending"

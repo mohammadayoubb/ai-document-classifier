@@ -5,40 +5,26 @@ Routes should receive repositories, services, and current users through these
 dependencies instead of constructing objects inside route functions.
 """
 
-from collections.abc import AsyncGenerator
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import SessionLocal
+from app.auth.fastapi_users import fastapi_users
+from app.db.session import get_session
 from app.domain.user import UserDomain, UserRole
+from app.repositories.audit_repo import AuditRepository
 from app.repositories.user_repo import UserRepository
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 
-
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Provide one database session per request.
-
-    The dependency owns the session lifecycle:
-    open session -> yield to route/service -> commit on success -> rollback on error.
-
-    Routes should never manually commit, rollback, or close the session.
-    """
-    async with SessionLocal() as session:
-        try:
-            yield session
-
-            # Commit happens here after the route/service finishes successfully.
-            await session.commit()
-        except Exception:
-            # Rollback protects the DB from partial writes if anything fails.
-            await session.rollback()
-            raise
+# Create the fastapi-users dependency once at module level.
+# This avoids calling current_user(...) repeatedly inside route signatures.
+_current_active_user = fastapi_users.current_user(active=True)
 
 
 def get_user_repository(
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> UserRepository:
     """Create a user repository for the current request.
 
@@ -47,25 +33,33 @@ def get_user_repository(
     return UserRepository(session=session)
 
 
+def get_audit_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AuditRepository:
+    """Create an audit repository for the current request.
+
+    AuditRepository performs SQL only for the audit_log table.
+    """
+    return AuditRepository(session=session)
+
+
 def get_audit_service(
-    user_repo: UserRepository = Depends(get_user_repository),
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repository)],
 ) -> AuditService:
     """Create the audit service.
 
-    AuditService uses the repository to write/read audit log records.
-    Business decisions about when to audit belong in services, not routes.
+    AuditService delegates SQL work to AuditRepository.
     """
-    return AuditService(user_repo=user_repo)
+    return AuditService(audit_repo=audit_repo)
 
 
 def get_user_service(
-    user_repo: UserRepository = Depends(get_user_repository),
-    audit_service: AuditService = Depends(get_audit_service),
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
 ) -> UserService:
     """Create the user service.
 
-    UserService owns role-change business rules and calls AuditService when
-    a role change must be recorded.
+    UserService owns role-change business rules and audit logging.
     """
     return UserService(
         user_repo=user_repo,
@@ -73,24 +67,24 @@ def get_user_service(
     )
 
 
-async def get_current_user() -> UserDomain:
-    """Return the authenticated user.
+async def get_current_user(
+    current_user: Annotated[object, Depends(_current_active_user)],
+) -> UserDomain:
+    """Return the authenticated user as a domain model.
 
-    This is a temporary placeholder until fastapi-users JWT auth is wired.
-    Replace this with real JWT-based user loading in the authentication phase.
+    fastapi-users loads the authenticated ORM user from the Bearer JWT.
+    We immediately convert it to UserDomain so route files never expose or
+    return the SQLAlchemy ORM object directly.
     """
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication is not wired yet",
-    )
+    return UserDomain.model_validate(current_user)
 
 
 async def require_admin(
-    current_user: UserDomain = Depends(get_current_user),
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
 ) -> UserDomain:
     """Require the current user to be an admin.
 
-    401 is handled by get_current_user.
+    401 is handled by get_current_user when the JWT is missing or invalid.
     403 is returned here when the user is authenticated but lacks permission.
     """
     if current_user.role != UserRole.ADMIN:
@@ -103,7 +97,7 @@ async def require_admin(
 
 
 async def require_reviewer_or_above(
-    current_user: UserDomain = Depends(get_current_user),
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
 ) -> UserDomain:
     """Require reviewer or admin access.
 
@@ -114,6 +108,23 @@ async def require_reviewer_or_above(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Reviewer role required",
+        )
+
+    return current_user
+
+
+async def require_admin_or_auditor(
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
+) -> UserDomain:
+    """Require permission to read the audit log.
+
+    According to the project roles, admins and auditors can view audit logs.
+    Reviewers cannot.
+    """
+    if current_user.role not in {UserRole.ADMIN, UserRole.AUDITOR}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Audit log access required",
         )
 
     return current_user
