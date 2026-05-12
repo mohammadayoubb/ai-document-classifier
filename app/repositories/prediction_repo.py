@@ -1,16 +1,15 @@
 """Prediction SQL repository — data access only, no business logic."""
 
+from typing import cast
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Prediction
 
 
 class PredictionRepository:
-    """SQL-only data access for the predictions table.
-
-    Args:
-        session: Async database session injected via Depends().
-    """
+    """SQL-only data access for the predictions table."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -24,73 +23,84 @@ class PredictionRepository:
         confidence: float,
         top5_labels: str,
         top5_scores: str,
+        overlay_key: str | None = None,
     ) -> Prediction:
-        """Insert a new prediction row and return it.
-
-        Args:
-            batch_id: Primary key of the owning batch.
-            filename: Original filename from the SFTP upload.
-            storage_key: MinIO object key for the raw document.
-            predicted_label: Top-1 class label from the classifier.
-            confidence: Top-1 confidence score.
-            top5_labels: JSON array string of the top-5 label names.
-            top5_scores: JSON array string of the top-5 confidence scores.
-
-        Returns:
-            The newly inserted Prediction ORM instance.
-        """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+        """Insert a new prediction row and return it."""
+        prediction = Prediction(
+            batch_id=batch_id,
+            filename=filename,
+            storage_key=storage_key,
+            overlay_key=overlay_key,
+            predicted_label=predicted_label,
+            confidence=confidence,
+            top5_labels=top5_labels,
+            top5_scores=top5_scores,
+        )
+        self._session.add(prediction)
+        await self._session.flush()
+        await self._session.refresh(prediction)
+        return prediction
 
     async def get_by_id(self, pred_id: int) -> Prediction | None:
-        """Look up a prediction by primary key.
+        """Look up a prediction by primary key."""
+        return cast(Prediction | None, await self._session.get(Prediction, pred_id))
 
-        Args:
-            pred_id: The prediction primary key.
+    async def list_recent(
+        self,
+        limit: int = 20,
+        only_needs_review: bool = False,
+        low_confidence_threshold: float = 0.7,
+    ) -> list[Prediction]:
+        """Return the most recent prediction rows across all batches."""
+        stmt = select(Prediction).order_by(Prediction.created_at.desc(), Prediction.id.desc())
+        if only_needs_review:
+            stmt = stmt.where(
+                Prediction.confidence < low_confidence_threshold,
+                Prediction.is_relabeled.is_(False),
+            )
+        stmt = stmt.limit(limit)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
-        Returns:
-            The Prediction ORM instance, or None if not found.
-        """
-        # TODO: Phase 6
-        return None
-
-    async def list_recent(self, limit: int = 20) -> list[Prediction]:
-        """Return the most recent prediction rows across all batches.
-
-        Args:
-            limit: Maximum rows to return.
-
-        Returns:
-            A list of Prediction ORM instances ordered by creation time descending.
-        """
-        # TODO: Phase 6
-        return []
+    async def list_for_batch(self, batch_id: int) -> list[Prediction]:
+        """Return predictions for one batch ordered by newest first."""
+        stmt = (
+            select(Prediction)
+            .where(Prediction.batch_id == batch_id)
+            .order_by(Prediction.created_at.desc(), Prediction.id.desc())
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
     async def relabel(
-        self, pred_id: int, new_label: str, relabeled_by: int
-    ) -> Prediction:
-        """Mark a prediction as relabeled and update its label columns.
+        self,
+        pred_id: int,
+        new_label: str,
+        relabeled_by: int,
+    ) -> Prediction | None:
+        """Mark a prediction as relabeled and update reviewer columns."""
+        prediction = await self.get_by_id(pred_id)
+        if prediction is None:
+            return None
 
-        Args:
-            pred_id: The prediction primary key.
-            new_label: The corrected document class label.
-            relabeled_by: Primary key of the reviewer performing the relabel.
+        prediction.is_relabeled = True
+        prediction.relabeled_to = new_label
+        prediction.relabeled_by = relabeled_by
+        await self._session.flush()
+        await self._session.refresh(prediction)
+        return prediction
 
-        Returns:
-            The updated Prediction ORM instance.
-        """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+    async def update_overlay_key(
+        self,
+        pred_id: int,
+        overlay_key: str,
+    ) -> Prediction | None:
+        """Set the MinIO overlay_key after the annotated PNG is generated."""
+        prediction = await self.get_by_id(pred_id)
+        if prediction is None:
+            return None
 
-    async def update_overlay_key(self, pred_id: int, overlay_key: str) -> Prediction:
-        """Set the MinIO overlay_key after the annotated PNG is generated.
-
-        Args:
-            pred_id: The prediction primary key.
-            overlay_key: MinIO object key for the annotated PNG in the overlays bucket.
-
-        Returns:
-            The updated Prediction ORM instance.
-        """
-        # TODO: Phase 8
-        ...  # type: ignore[return-value]
+        prediction.overlay_key = overlay_key
+        await self._session.flush()
+        await self._session.refresh(prediction)
+        return prediction

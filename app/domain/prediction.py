@@ -1,27 +1,37 @@
-"""Prediction domain model."""
+"""Prediction domain models returned by services and future routes."""
 
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class PredictionDomain(BaseModel):
-    """Read-only view of a prediction result, returned by the service layer.
-
-    confidence is always in [0.0, 1.0].  top5_labels and top5_scores are
-    stored as JSON array strings in the database and decoded by the caller.
-    """
+class PredictionRead(BaseModel):
+    """Read model with decoded top-5 classifier output."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     batch_id: int
     filename: str
+    storage_key: str | None = None
+    overlay_key: str | None = None
     predicted_label: str
     confidence: float = Field(ge=0.0, le=1.0)
-    top5_labels: str  # JSON array string — e.g. '["invoice", "form", ...]'
-    top5_scores: str  # JSON array string — e.g. '[0.97, 0.02, ...]'
+    top5_labels: list[str]
+    top5_scores: list[float]
+    needs_review: bool
     is_relabeled: bool
-    relabeled_to: str | None
-    overlay_key: str | None
+    relabeled_to: str | None = None
+    relabeled_by: int | None = None
     created_at: datetime
+
+
+class RecentPredictionsResponse(BaseModel):
+    """Paginated recent prediction read model."""
+
+    items: list[PredictionRead]
+    total: int
+    limit: int
+
+
+PredictionDomain = PredictionRead
