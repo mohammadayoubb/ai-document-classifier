@@ -2,6 +2,7 @@ FROM python:3.11-slim AS base
 WORKDIR /app
 RUN pip install uv
 COPY pyproject.toml uv.lock* ./
+RUN uv pip install --system torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN uv pip install --system -r pyproject.toml
 
 COPY app/ ./app/
