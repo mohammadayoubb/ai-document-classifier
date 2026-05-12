@@ -16,13 +16,15 @@ RUN pip install --no-cache-dir \
     "casbin-sqlalchemy-adapter>=0.5.0" \
     "fastapi-cache2[redis]>=0.2.1" \
     "rq>=1.16.0" \
-    "redis>=5.0.0" \
+    "redis>=4.6.0,<5.0.0" \
     "hvac>=2.1.0" \
     "miniopy-async>=1.19.0" \
     "structlog>=24.1.0" \
     "paramiko>=3.4.0" \
     "pillow>=10.3.0" \
     "httpx>=0.27.0" \
+    "psycopg2-binary>=2.9.9" \
+    "email-validator>=2.1.0" \
     "tenacity>=8.2.0" \
     "python-multipart>=0.0.9"
 
