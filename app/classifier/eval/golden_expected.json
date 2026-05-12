@@ -1,1 +1,1152 @@
-[]
+[
+  {
+    "filename": "0001.tif",
+    "expected_label": "letter",
+    "expected_top1_confidence": 0.9994389414787292,
+    "true_label": "letter",
+    "source_split": "test",
+    "source_index": 19591,
+    "difficulty": "easy",
+    "top5_labels": [
+      "letter",
+      "memo",
+      "invoice",
+      "advertisement",
+      "handwritten"
+    ],
+    "top5_scores": [
+      0.9994389414787292,
+      0.00015385360165964812,
+      6.907043280079961e-05,
+      6.451047374866903e-05,
+      5.389625221141614e-05
+    ]
+  },
+  {
+    "filename": "0002.tif",
+    "expected_label": "letter",
+    "expected_top1_confidence": 0.4485323429107666,
+    "true_label": "letter",
+    "source_split": "test",
+    "source_index": 9276,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "letter",
+      "memo",
+      "form",
+      "questionnaire",
+      "email"
+    ],
+    "top5_scores": [
+      0.4485323429107666,
+      0.44681137800216675,
+      0.03239678964018822,
+      0.026937944814562798,
+      0.014884830452501774
+    ]
+  },
+  {
+    "filename": "0003.tif",
+    "expected_label": "form",
+    "expected_top1_confidence": 0.999433696269989,
+    "true_label": "form",
+    "source_split": "test",
+    "source_index": 17021,
+    "difficulty": "easy",
+    "top5_labels": [
+      "form",
+      "specification",
+      "invoice",
+      "budget",
+      "scientific_report"
+    ],
+    "top5_scores": [
+      0.999433696269989,
+      0.00015457859262824059,
+      8.504421566613019e-05,
+      4.518797140917741e-05,
+      4.360738239483908e-05
+    ]
+  },
+  {
+    "filename": "0004.tif",
+    "expected_label": "form",
+    "expected_top1_confidence": 0.21126659214496613,
+    "true_label": "form",
+    "source_split": "test",
+    "source_index": 19737,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "form",
+      "news_article",
+      "advertisement",
+      "resume",
+      "specification"
+    ],
+    "top5_scores": [
+      0.21126659214496613,
+      0.21054069697856903,
+      0.20013119280338287,
+      0.06740859895944595,
+      0.06384902447462082
+    ]
+  },
+  {
+    "filename": "0005.tif",
+    "expected_label": "email",
+    "expected_top1_confidence": 0.9996474981307983,
+    "true_label": "email",
+    "source_split": "test",
+    "source_index": 21754,
+    "difficulty": "easy",
+    "top5_labels": [
+      "email",
+      "letter",
+      "presentation",
+      "news_article",
+      "memo"
+    ],
+    "top5_scores": [
+      0.9996474981307983,
+      0.00017923828272614628,
+      4.9771439080359414e-05,
+      2.1466961698024534e-05,
+      1.9387403881410137e-05
+    ]
+  },
+  {
+    "filename": "0006.tif",
+    "expected_label": "email",
+    "expected_top1_confidence": 0.29923737049102783,
+    "true_label": "email",
+    "source_split": "test",
+    "source_index": 27769,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "email",
+      "news_article",
+      "presentation",
+      "form",
+      "letter"
+    ],
+    "top5_scores": [
+      0.29923737049102783,
+      0.29486486315727234,
+      0.11281764507293701,
+      0.0673142597079277,
+      0.06716752052307129
+    ]
+  },
+  {
+    "filename": "0007.tif",
+    "expected_label": "handwritten",
+    "expected_top1_confidence": 0.9992710947990417,
+    "true_label": "handwritten",
+    "source_split": "test",
+    "source_index": 31924,
+    "difficulty": "easy",
+    "top5_labels": [
+      "handwritten",
+      "letter",
+      "questionnaire",
+      "invoice",
+      "memo"
+    ],
+    "top5_scores": [
+      0.9992710947990417,
+      0.0004919044440612197,
+      5.151356526766904e-05,
+      4.081424776813947e-05,
+      3.367126191733405e-05
+    ]
+  },
+  {
+    "filename": "0008.tif",
+    "expected_label": "handwritten",
+    "expected_top1_confidence": 0.3512241840362549,
+    "true_label": "handwritten",
+    "source_split": "test",
+    "source_index": 19985,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "handwritten",
+      "letter",
+      "form",
+      "invoice",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.3512241840362549,
+      0.3497926592826843,
+      0.17113254964351654,
+      0.04984162002801895,
+      0.04718061536550522
+    ]
+  },
+  {
+    "filename": "0009.tif",
+    "expected_label": "advertisement",
+    "expected_top1_confidence": 0.9998784065246582,
+    "true_label": "advertisement",
+    "source_split": "test",
+    "source_index": 18882,
+    "difficulty": "easy",
+    "top5_labels": [
+      "advertisement",
+      "handwritten",
+      "news_article",
+      "questionnaire",
+      "scientific_publication"
+    ],
+    "top5_scores": [
+      0.9998784065246582,
+      3.140542685287073e-05,
+      3.010800719494e-05,
+      2.0433855752344243e-05,
+      8.073739081737585e-06
+    ]
+  },
+  {
+    "filename": "0010.tif",
+    "expected_label": "advertisement",
+    "expected_top1_confidence": 0.3078802227973938,
+    "true_label": "advertisement",
+    "source_split": "test",
+    "source_index": 21647,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "advertisement",
+      "handwritten",
+      "presentation",
+      "questionnaire",
+      "form"
+    ],
+    "top5_scores": [
+      0.3078802227973938,
+      0.30511102080345154,
+      0.26141196489334106,
+      0.05385824292898178,
+      0.01277494803071022
+    ]
+  },
+  {
+    "filename": "0011.tif",
+    "expected_label": "scientific_report",
+    "expected_top1_confidence": 0.9993709921836853,
+    "true_label": "scientific_report",
+    "source_split": "test",
+    "source_index": 21450,
+    "difficulty": "easy",
+    "top5_labels": [
+      "scientific_report",
+      "memo",
+      "form",
+      "budget",
+      "scientific_publication"
+    ],
+    "top5_scores": [
+      0.9993709921836853,
+      0.00018193137657362968,
+      0.00011808190174633637,
+      7.433687278535217e-05,
+      6.96153292665258e-05
+    ]
+  },
+  {
+    "filename": "0012.tif",
+    "expected_label": "scientific_report",
+    "expected_top1_confidence": 0.31708869338035583,
+    "true_label": "scientific_report",
+    "source_split": "test",
+    "source_index": 7163,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "scientific_report",
+      "letter",
+      "memo",
+      "news_article",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.31708869338035583,
+      0.31640949845314026,
+      0.2620703876018524,
+      0.03012298420071602,
+      0.02473386377096176
+    ]
+  },
+  {
+    "filename": "0013.tif",
+    "expected_label": "scientific_publication",
+    "expected_top1_confidence": 0.9986357092857361,
+    "true_label": "scientific_publication",
+    "source_split": "test",
+    "source_index": 11071,
+    "difficulty": "easy",
+    "top5_labels": [
+      "scientific_publication",
+      "scientific_report",
+      "news_article",
+      "form",
+      "email"
+    ],
+    "top5_scores": [
+      0.9986357092857361,
+      0.0007576616480946541,
+      0.00035551987821236253,
+      4.845930016017519e-05,
+      4.8073703510453925e-05
+    ]
+  },
+  {
+    "filename": "0014.tif",
+    "expected_label": "scientific_publication",
+    "expected_top1_confidence": 0.44657549262046814,
+    "true_label": "scientific_publication",
+    "source_split": "test",
+    "source_index": 5384,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "scientific_publication",
+      "scientific_report",
+      "presentation",
+      "news_article",
+      "letter"
+    ],
+    "top5_scores": [
+      0.44657549262046814,
+      0.4452172815799713,
+      0.08721157908439636,
+      0.004725515842437744,
+      0.002538959262892604
+    ]
+  },
+  {
+    "filename": "0015.tif",
+    "expected_label": "specification",
+    "expected_top1_confidence": 0.9999169111251831,
+    "true_label": "specification",
+    "source_split": "test",
+    "source_index": 23683,
+    "difficulty": "easy",
+    "top5_labels": [
+      "specification",
+      "scientific_report",
+      "form",
+      "questionnaire",
+      "budget"
+    ],
+    "top5_scores": [
+      0.9999169111251831,
+      2.0912953914375976e-05,
+      1.6720232451916672e-05,
+      1.5132996850297786e-05,
+      9.034102731675375e-06
+    ]
+  },
+  {
+    "filename": "0016.tif",
+    "expected_label": "specification",
+    "expected_top1_confidence": 0.39859771728515625,
+    "true_label": "specification",
+    "source_split": "test",
+    "source_index": 14521,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "specification",
+      "form",
+      "scientific_report",
+      "memo",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.39859771728515625,
+      0.39148226380348206,
+      0.09907703846693039,
+      0.038127195090055466,
+      0.022523382678627968
+    ]
+  },
+  {
+    "filename": "0017.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.999863862991333,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 930,
+    "difficulty": "easy",
+    "top5_labels": [
+      "file_folder",
+      "invoice",
+      "letter",
+      "presentation",
+      "handwritten"
+    ],
+    "top5_scores": [
+      0.999863862991333,
+      2.493977990525309e-05,
+      1.7344995285384357e-05,
+      1.4650060620624572e-05,
+      1.1302523489575833e-05
+    ]
+  },
+  {
+    "filename": "0018.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.4430387020111084,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 29558,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "file_folder",
+      "scientific_report",
+      "budget",
+      "presentation",
+      "scientific_publication"
+    ],
+    "top5_scores": [
+      0.4430387020111084,
+      0.4425029456615448,
+      0.0304840337485075,
+      0.019948923960328102,
+      0.01603446528315544
+    ]
+  },
+  {
+    "filename": "0019.tif",
+    "expected_label": "news_article",
+    "expected_top1_confidence": 0.9998713731765747,
+    "true_label": "news_article",
+    "source_split": "test",
+    "source_index": 30848,
+    "difficulty": "easy",
+    "top5_labels": [
+      "news_article",
+      "scientific_publication",
+      "presentation",
+      "scientific_report",
+      "advertisement"
+    ],
+    "top5_scores": [
+      0.9998713731765747,
+      4.456999522517435e-05,
+      1.9161640011589043e-05,
+      1.4854205801384524e-05,
+      1.1123345757368952e-05
+    ]
+  },
+  {
+    "filename": "0020.tif",
+    "expected_label": "news_article",
+    "expected_top1_confidence": 0.30323994159698486,
+    "true_label": "news_article",
+    "source_split": "test",
+    "source_index": 5421,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "news_article",
+      "presentation",
+      "scientific_publication",
+      "email",
+      "scientific_report"
+    ],
+    "top5_scores": [
+      0.30323994159698486,
+      0.2984669506549835,
+      0.12877660989761353,
+      0.07972310483455658,
+      0.048087071627378464
+    ]
+  },
+  {
+    "filename": "0021.tif",
+    "expected_label": "budget",
+    "expected_top1_confidence": 0.9998383522033691,
+    "true_label": "budget",
+    "source_split": "test",
+    "source_index": 36608,
+    "difficulty": "easy",
+    "top5_labels": [
+      "budget",
+      "invoice",
+      "scientific_report",
+      "email",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.9998383522033691,
+      7.10064559825696e-05,
+      2.6581908969092183e-05,
+      1.6611735190963373e-05,
+      1.0982828825945035e-05
+    ]
+  },
+  {
+    "filename": "0022.tif",
+    "expected_label": "budget",
+    "expected_top1_confidence": 0.388095498085022,
+    "true_label": "budget",
+    "source_split": "test",
+    "source_index": 38084,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "budget",
+      "invoice",
+      "form",
+      "specification",
+      "resume"
+    ],
+    "top5_scores": [
+      0.388095498085022,
+      0.38536956906318665,
+      0.07813476026058197,
+      0.07399632036685944,
+      0.037040647119283676
+    ]
+  },
+  {
+    "filename": "0023.tif",
+    "expected_label": "invoice",
+    "expected_top1_confidence": 0.9997382760047913,
+    "true_label": "invoice",
+    "source_split": "test",
+    "source_index": 31626,
+    "difficulty": "easy",
+    "top5_labels": [
+      "invoice",
+      "form",
+      "budget",
+      "letter",
+      "memo"
+    ],
+    "top5_scores": [
+      0.9997382760047913,
+      0.00011739342153305188,
+      0.00011691423424053937,
+      8.5499041233561e-06,
+      2.677290922292741e-06
+    ]
+  },
+  {
+    "filename": "0024.tif",
+    "expected_label": "invoice",
+    "expected_top1_confidence": 0.31830042600631714,
+    "true_label": "invoice",
+    "source_split": "test",
+    "source_index": 2059,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "invoice",
+      "form",
+      "scientific_report",
+      "budget",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.31830042600631714,
+      0.3145977258682251,
+      0.15934103727340698,
+      0.10288713127374649,
+      0.032036490738391876
+    ]
+  },
+  {
+    "filename": "0025.tif",
+    "expected_label": "presentation",
+    "expected_top1_confidence": 0.9986157417297363,
+    "true_label": "presentation",
+    "source_split": "test",
+    "source_index": 12056,
+    "difficulty": "easy",
+    "top5_labels": [
+      "presentation",
+      "scientific_report",
+      "email",
+      "resume",
+      "budget"
+    ],
+    "top5_scores": [
+      0.9986157417297363,
+      0.0004146117717027664,
+      0.00021400114928837866,
+      0.00018071179511025548,
+      0.00012768615852110088
+    ]
+  },
+  {
+    "filename": "0026.tif",
+    "expected_label": "presentation",
+    "expected_top1_confidence": 0.24028170108795166,
+    "true_label": "presentation",
+    "source_split": "test",
+    "source_index": 30095,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "presentation",
+      "file_folder",
+      "scientific_report",
+      "questionnaire",
+      "budget"
+    ],
+    "top5_scores": [
+      0.24028170108795166,
+      0.23751065135002136,
+      0.134676992893219,
+      0.12855586409568787,
+      0.07749411463737488
+    ]
+  },
+  {
+    "filename": "0027.tif",
+    "expected_label": "questionnaire",
+    "expected_top1_confidence": 0.9998831748962402,
+    "true_label": "questionnaire",
+    "source_split": "test",
+    "source_index": 22540,
+    "difficulty": "easy",
+    "top5_labels": [
+      "questionnaire",
+      "form",
+      "budget",
+      "presentation",
+      "advertisement"
+    ],
+    "top5_scores": [
+      0.9998831748962402,
+      2.890994437620975e-05,
+      1.532328133180272e-05,
+      1.2785631952283438e-05,
+      1.2688456081377808e-05
+    ]
+  },
+  {
+    "filename": "0028.tif",
+    "expected_label": "questionnaire",
+    "expected_top1_confidence": 0.21198278665542603,
+    "true_label": "questionnaire",
+    "source_split": "test",
+    "source_index": 2897,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "questionnaire",
+      "memo",
+      "scientific_report",
+      "letter",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.21198278665542603,
+      0.20865653455257416,
+      0.18703070282936096,
+      0.16998544335365295,
+      0.08969491720199585
+    ]
+  },
+  {
+    "filename": "0029.tif",
+    "expected_label": "resume",
+    "expected_top1_confidence": 0.9999701976776123,
+    "true_label": "resume",
+    "source_split": "test",
+    "source_index": 735,
+    "difficulty": "easy",
+    "top5_labels": [
+      "resume",
+      "email",
+      "memo",
+      "budget",
+      "form"
+    ],
+    "top5_scores": [
+      0.9999701976776123,
+      4.7836019803071395e-06,
+      4.720639935840154e-06,
+      2.9620252917084144e-06,
+      2.5299132175859995e-06
+    ]
+  },
+  {
+    "filename": "0030.tif",
+    "expected_label": "resume",
+    "expected_top1_confidence": 0.45970436930656433,
+    "true_label": "resume",
+    "source_split": "test",
+    "source_index": 21662,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "resume",
+      "presentation",
+      "scientific_report",
+      "scientific_publication",
+      "email"
+    ],
+    "top5_scores": [
+      0.45970436930656433,
+      0.45913633704185486,
+      0.04132699966430664,
+      0.009297841228544712,
+      0.009023620747029781
+    ]
+  },
+  {
+    "filename": "0031.tif",
+    "expected_label": "memo",
+    "expected_top1_confidence": 0.9998563528060913,
+    "true_label": "memo",
+    "source_split": "test",
+    "source_index": 31571,
+    "difficulty": "easy",
+    "top5_labels": [
+      "memo",
+      "letter",
+      "budget",
+      "presentation",
+      "form"
+    ],
+    "top5_scores": [
+      0.9998563528060913,
+      8.139975398080423e-05,
+      9.760292414284777e-06,
+      8.758337571634911e-06,
+      8.396399607590865e-06
+    ]
+  },
+  {
+    "filename": "0032.tif",
+    "expected_label": "memo",
+    "expected_top1_confidence": 0.4918135404586792,
+    "true_label": "memo",
+    "source_split": "test",
+    "source_index": 28999,
+    "difficulty": "ambiguous",
+    "top5_labels": [
+      "memo",
+      "letter",
+      "form",
+      "email",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.4918135404586792,
+      0.48697787523269653,
+      0.013385376892983913,
+      0.003931856248527765,
+      0.0008276199223473668
+    ]
+  },
+  {
+    "filename": "0033.tif",
+    "expected_label": "scientific_publication",
+    "expected_top1_confidence": 0.15247973799705505,
+    "true_label": "scientific_publication",
+    "source_split": "test",
+    "source_index": 2820,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "scientific_publication",
+      "specification",
+      "questionnaire",
+      "file_folder",
+      "letter"
+    ],
+    "top5_scores": [
+      0.15247973799705505,
+      0.14049090445041656,
+      0.10588043928146362,
+      0.10101436823606491,
+      0.0899132788181305
+    ]
+  },
+  {
+    "filename": "0034.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.16641107201576233,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 31408,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "file_folder",
+      "presentation",
+      "form",
+      "budget",
+      "resume"
+    ],
+    "top5_scores": [
+      0.16641107201576233,
+      0.14603881537914276,
+      0.11024091392755508,
+      0.09245283156633377,
+      0.07516282796859741
+    ]
+  },
+  {
+    "filename": "0035.tif",
+    "expected_label": "form",
+    "expected_top1_confidence": 0.17065292596817017,
+    "true_label": "form",
+    "source_split": "test",
+    "source_index": 11053,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "form",
+      "news_article",
+      "specification",
+      "scientific_report",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.17065292596817017,
+      0.1697291135787964,
+      0.15657801926136017,
+      0.11301279813051224,
+      0.0790250226855278
+    ]
+  },
+  {
+    "filename": "0036.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.17139893770217896,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 19782,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "file_folder",
+      "scientific_report",
+      "memo",
+      "budget",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.17139893770217896,
+      0.14797303080558777,
+      0.12786725163459778,
+      0.12324430048465729,
+      0.11008458584547043
+    ]
+  },
+  {
+    "filename": "0037.tif",
+    "expected_label": "resume",
+    "expected_top1_confidence": 0.17387083172798157,
+    "true_label": "resume",
+    "source_split": "test",
+    "source_index": 30400,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "resume",
+      "budget",
+      "scientific_report",
+      "presentation",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.17387083172798157,
+      0.15732602775096893,
+      0.15530160069465637,
+      0.13487517833709717,
+      0.08903609216213226
+    ]
+  },
+  {
+    "filename": "0038.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.19066014885902405,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 5103,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "file_folder",
+      "resume",
+      "budget",
+      "presentation",
+      "form"
+    ],
+    "top5_scores": [
+      0.19066014885902405,
+      0.16580182313919067,
+      0.10010617971420288,
+      0.08239146322011948,
+      0.0771196261048317
+    ]
+  },
+  {
+    "filename": "0039.tif",
+    "expected_label": "scientific_report",
+    "expected_top1_confidence": 0.19418415427207947,
+    "true_label": "scientific_report",
+    "source_split": "test",
+    "source_index": 19104,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "scientific_report",
+      "scientific_publication",
+      "form",
+      "file_folder",
+      "invoice"
+    ],
+    "top5_scores": [
+      0.19418415427207947,
+      0.1400422900915146,
+      0.1335226446390152,
+      0.12186092883348465,
+      0.10921353846788406
+    ]
+  },
+  {
+    "filename": "0040.tif",
+    "expected_label": "scientific_report",
+    "expected_top1_confidence": 0.20264053344726562,
+    "true_label": "scientific_report",
+    "source_split": "test",
+    "source_index": 15353,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "scientific_report",
+      "presentation",
+      "budget",
+      "memo",
+      "letter"
+    ],
+    "top5_scores": [
+      0.20264053344726562,
+      0.18568076193332672,
+      0.17093618214130402,
+      0.16485944390296936,
+      0.14279904961585999
+    ]
+  },
+  {
+    "filename": "0041.tif",
+    "expected_label": "presentation",
+    "expected_top1_confidence": 0.202778622508049,
+    "true_label": "presentation",
+    "source_split": "test",
+    "source_index": 26094,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "presentation",
+      "resume",
+      "scientific_report",
+      "handwritten",
+      "specification"
+    ],
+    "top5_scores": [
+      0.202778622508049,
+      0.13208577036857605,
+      0.12344558537006378,
+      0.109848253428936,
+      0.10334789007902145
+    ]
+  },
+  {
+    "filename": "0042.tif",
+    "expected_label": "budget",
+    "expected_top1_confidence": 0.2047390192747116,
+    "true_label": "budget",
+    "source_split": "test",
+    "source_index": 24578,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "budget",
+      "specification",
+      "scientific_report",
+      "resume",
+      "invoice"
+    ],
+    "top5_scores": [
+      0.2047390192747116,
+      0.16976556181907654,
+      0.16290585696697235,
+      0.11090975254774094,
+      0.09148262441158295
+    ]
+  },
+  {
+    "filename": "0043.tif",
+    "expected_label": "form",
+    "expected_top1_confidence": 0.20509810745716095,
+    "true_label": "form",
+    "source_split": "test",
+    "source_index": 26807,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "form",
+      "scientific_report",
+      "presentation",
+      "advertisement",
+      "questionnaire"
+    ],
+    "top5_scores": [
+      0.20509810745716095,
+      0.12356307357549667,
+      0.12297306954860687,
+      0.1222243383526802,
+      0.08577439934015274
+    ]
+  },
+  {
+    "filename": "0044.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.20613691210746765,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 11759,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "file_folder",
+      "scientific_report",
+      "memo",
+      "budget",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.20613691210746765,
+      0.1615826040506363,
+      0.1385069638490677,
+      0.12193064391613007,
+      0.1069830060005188
+    ]
+  },
+  {
+    "filename": "0045.tif",
+    "expected_label": "budget",
+    "expected_top1_confidence": 0.2078273445367813,
+    "true_label": "budget",
+    "source_split": "test",
+    "source_index": 1818,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "budget",
+      "presentation",
+      "specification",
+      "scientific_report",
+      "form"
+    ],
+    "top5_scores": [
+      0.2078273445367813,
+      0.20005688071250916,
+      0.1528468132019043,
+      0.1361163854598999,
+      0.11385181546211243
+    ]
+  },
+  {
+    "filename": "0046.tif",
+    "expected_label": "memo",
+    "expected_top1_confidence": 0.209542915225029,
+    "true_label": "memo",
+    "source_split": "test",
+    "source_index": 19950,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "memo",
+      "letter",
+      "scientific_report",
+      "news_article",
+      "presentation"
+    ],
+    "top5_scores": [
+      0.209542915225029,
+      0.20106787979602814,
+      0.13125450909137726,
+      0.12275048345327377,
+      0.11801530420780182
+    ]
+  },
+  {
+    "filename": "0047.tif",
+    "expected_label": "presentation",
+    "expected_top1_confidence": 0.21024978160858154,
+    "true_label": "presentation",
+    "source_split": "test",
+    "source_index": 38029,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "presentation",
+      "advertisement",
+      "file_folder",
+      "budget",
+      "invoice"
+    ],
+    "top5_scores": [
+      0.21024978160858154,
+      0.20101574063301086,
+      0.14956560730934143,
+      0.08333919942378998,
+      0.08188419789075851
+    ]
+  },
+  {
+    "filename": "0048.tif",
+    "expected_label": "questionnaire",
+    "expected_top1_confidence": 0.21037086844444275,
+    "true_label": "questionnaire",
+    "source_split": "test",
+    "source_index": 24131,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "questionnaire",
+      "memo",
+      "presentation",
+      "email",
+      "resume"
+    ],
+    "top5_scores": [
+      0.21037086844444275,
+      0.1599816083908081,
+      0.129128098487854,
+      0.12684008479118347,
+      0.10939713567495346
+    ]
+  },
+  {
+    "filename": "0049.tif",
+    "expected_label": "file_folder",
+    "expected_top1_confidence": 0.21717336773872375,
+    "true_label": "file_folder",
+    "source_split": "test",
+    "source_index": 27946,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "file_folder",
+      "budget",
+      "handwritten",
+      "questionnaire",
+      "advertisement"
+    ],
+    "top5_scores": [
+      0.21717336773872375,
+      0.11248008906841278,
+      0.1102195605635643,
+      0.1050424575805664,
+      0.07680508494377136
+    ]
+  },
+  {
+    "filename": "0050.tif",
+    "expected_label": "questionnaire",
+    "expected_top1_confidence": 0.21926817297935486,
+    "true_label": "questionnaire",
+    "source_split": "test",
+    "source_index": 14239,
+    "difficulty": "edge_low_confidence",
+    "top5_labels": [
+      "questionnaire",
+      "email",
+      "presentation",
+      "letter",
+      "scientific_report"
+    ],
+    "top5_scores": [
+      0.21926817297935486,
+      0.21079429984092712,
+      0.18769560754299164,
+      0.17732584476470947,
+      0.053224459290504456
+    ]
+  }
+]
