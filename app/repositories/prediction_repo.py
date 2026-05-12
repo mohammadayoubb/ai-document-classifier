@@ -1,5 +1,6 @@
 """Prediction SQL repository — data access only, no business logic."""
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Prediction
@@ -39,8 +40,19 @@ class PredictionRepository:
         Returns:
             The newly inserted Prediction ORM instance.
         """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+        pred = Prediction(
+            batch_id=batch_id,
+            filename=filename,
+            storage_key=storage_key,
+            predicted_label=predicted_label,
+            confidence=confidence,
+            top5_labels=top5_labels,
+            top5_scores=top5_scores,
+        )
+        self._session.add(pred)
+        await self._session.flush()
+        await self._session.refresh(pred)
+        return pred
 
     async def get_by_id(self, pred_id: int) -> Prediction | None:
         """Look up a prediction by primary key.
@@ -51,8 +63,10 @@ class PredictionRepository:
         Returns:
             The Prediction ORM instance, or None if not found.
         """
-        # TODO: Phase 6
-        return None
+        result = await self._session.execute(
+            select(Prediction).where(Prediction.id == pred_id)
+        )
+        return result.scalar_one_or_none()
 
     async def list_recent(self, limit: int = 20) -> list[Prediction]:
         """Return the most recent prediction rows across all batches.
@@ -63,8 +77,10 @@ class PredictionRepository:
         Returns:
             A list of Prediction ORM instances ordered by creation time descending.
         """
-        # TODO: Phase 6
-        return []
+        result = await self._session.execute(
+            select(Prediction).order_by(Prediction.created_at.desc()).limit(limit)
+        )
+        return list(result.scalars().all())
 
     async def relabel(
         self, pred_id: int, new_label: str, relabeled_by: int
@@ -78,9 +94,22 @@ class PredictionRepository:
 
         Returns:
             The updated Prediction ORM instance.
+
+        Raises:
+            ValueError: If no prediction with pred_id exists.
         """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+        result = await self._session.execute(
+            select(Prediction).where(Prediction.id == pred_id)
+        )
+        pred = result.scalar_one_or_none()
+        if pred is None:
+            raise ValueError(f"Prediction {pred_id} not found")
+        pred.is_relabeled = True
+        pred.relabeled_to = new_label
+        pred.relabeled_by = relabeled_by
+        await self._session.flush()
+        await self._session.refresh(pred)
+        return pred
 
     async def update_overlay_key(self, pred_id: int, overlay_key: str) -> Prediction:
         """Set the MinIO overlay_key after the annotated PNG is generated.
@@ -91,6 +120,17 @@ class PredictionRepository:
 
         Returns:
             The updated Prediction ORM instance.
+
+        Raises:
+            ValueError: If no prediction with pred_id exists.
         """
-        # TODO: Phase 8
-        ...  # type: ignore[return-value]
+        result = await self._session.execute(
+            select(Prediction).where(Prediction.id == pred_id)
+        )
+        pred = result.scalar_one_or_none()
+        if pred is None:
+            raise ValueError(f"Prediction {pred_id} not found")
+        pred.overlay_key = overlay_key
+        await self._session.flush()
+        await self._session.refresh(pred)
+        return pred

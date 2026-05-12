@@ -1,5 +1,6 @@
 """Batch SQL repository — data access only, no business logic."""
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Batch, BatchStatus
@@ -24,8 +25,11 @@ class BatchRepository:
         Returns:
             The newly inserted Batch ORM instance.
         """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+        batch = Batch(owner_id=owner_id, status=BatchStatus.pending)
+        self._session.add(batch)
+        await self._session.flush()
+        await self._session.refresh(batch)
+        return batch
 
     async def get_by_id(self, batch_id: int) -> Batch | None:
         """Look up a batch by primary key.
@@ -36,8 +40,8 @@ class BatchRepository:
         Returns:
             The Batch ORM instance, or None if not found.
         """
-        # TODO: Phase 6
-        return None
+        result = await self._session.execute(select(Batch).where(Batch.id == batch_id))
+        return result.scalar_one_or_none()
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[Batch]:
         """Return all batch rows ordered by creation time descending.
@@ -49,8 +53,10 @@ class BatchRepository:
         Returns:
             A list of Batch ORM instances.
         """
-        # TODO: Phase 6
-        return []
+        result = await self._session.execute(
+            select(Batch).order_by(Batch.created_at.desc()).limit(limit).offset(offset)
+        )
+        return list(result.scalars().all())
 
     async def update_status(self, batch_id: int, status: BatchStatus) -> Batch:
         """Update the status column of a batch row.
@@ -61,6 +67,15 @@ class BatchRepository:
 
         Returns:
             The updated Batch ORM instance.
+
+        Raises:
+            ValueError: If no batch with batch_id exists.
         """
-        # TODO: Phase 6
-        ...  # type: ignore[return-value]
+        result = await self._session.execute(select(Batch).where(Batch.id == batch_id))
+        batch = result.scalar_one_or_none()
+        if batch is None:
+            raise ValueError(f"Batch {batch_id} not found")
+        batch.status = status
+        await self._session.flush()
+        await self._session.refresh(batch)
+        return batch

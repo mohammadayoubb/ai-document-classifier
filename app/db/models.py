@@ -5,8 +5,9 @@ Routes, services, and domain modules must never import from here.
 """
 
 import enum
+from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import ForeignKey, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -33,7 +34,7 @@ class User(Base):
     hashed_password: Mapped[str]
     role: Mapped[str] = mapped_column(default="auditor")
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[DateTime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     batches: Mapped[list["Batch"]] = relationship(back_populates="owner")
     audit_entries: Mapped[list["AuditLog"]] = relationship(back_populates="actor")
@@ -47,8 +48,8 @@ class Batch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     status: Mapped[BatchStatus] = mapped_column(default=BatchStatus.pending)
-    created_at: Mapped[DateTime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[DateTime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
     )
 
@@ -73,7 +74,7 @@ class Prediction(Base):
     is_relabeled: Mapped[bool] = mapped_column(default=False)
     relabeled_to: Mapped[str | None]
     relabeled_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[DateTime] = mapped_column(server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     batch: Mapped["Batch"] = relationship(back_populates="predictions")
 
@@ -88,7 +89,7 @@ class AuditLog(Base):
     action: Mapped[str]         # "role_change" | "relabel" | "batch_state_change"
     target: Mapped[str]         # human-readable description of what changed
     metadata_: Mapped[str | None]  # JSON extra context
-    timestamp: Mapped[DateTime] = mapped_column(server_default=func.now())
+    timestamp: Mapped[datetime] = mapped_column(server_default=func.now())
 
     actor: Mapped["User"] = relationship(back_populates="audit_entries")
 

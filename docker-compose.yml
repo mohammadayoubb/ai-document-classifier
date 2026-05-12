@@ -79,6 +79,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports: ["6379:6379"]
     networks: [app-net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -102,7 +103,9 @@ services:
     image: atmoz/sftp
     ports: ["${SFTP_PORT:-2222}:22"]
     volumes: [sftp_uploads:/home/uploader/uploads]
-    command: uploader:password:::uploads
+    # uid:gid 1000:100 matches the uploader user inside the container so the
+    # named volume is writable without a post-start chmod
+    command: uploader:password:1000:100:uploads
     networks: [app-net]
 
   vault:

@@ -6,7 +6,7 @@ os.getenv() is forbidden everywhere else in the codebase.
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = ""  # resolved from Vault
     vault_addr: str = "http://localhost:8200"
-    vault_token: str = Field(..., min_length=1)
+    # Accepts VAULT_TOKEN (injected by docker-compose) or VAULT_ROOT_TOKEN (set in .env directly)
+    vault_token: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("vault_token", "vault_root_token"),
+    )
 
     # SFTP
     sftp_host: str = "localhost"
@@ -69,6 +74,12 @@ class Settings(BaseSettings):
         "memo",
     ]
     low_confidence_threshold: float = 0.7
+
+    # Docker Compose port vars — present in .env for compose, not used at runtime
+    api_port: int = 8000
+    minio_port: int = 9000
+    minio_console_port: int = 9001
+    vault_port: int = 8200
 
     # Redis cache TTLs (seconds)
     cache_ttl_me: int = 300

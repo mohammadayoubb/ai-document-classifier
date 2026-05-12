@@ -8,10 +8,11 @@ Buckets created:
     overlays  — annotated PNG overlays from the inference worker
 """
 
+import asyncio
 import os
 
 import structlog
-from minio import Minio  # type: ignore[import-untyped]
+from miniopy_async import Minio  # type: ignore[import-untyped]
 
 log = structlog.get_logger()
 
@@ -22,7 +23,7 @@ MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
 REQUIRED_BUCKETS = ["documents", "overlays"]
 
 
-def init_buckets() -> None:
+async def init_buckets() -> None:
     """Create the required MinIO buckets if they do not already exist."""
     client = Minio(
         MINIO_ENDPOINT,
@@ -32,12 +33,13 @@ def init_buckets() -> None:
     )
 
     for bucket in REQUIRED_BUCKETS:
-        if not client.bucket_exists(bucket):
-            client.make_bucket(bucket)
+        exists = await client.bucket_exists(bucket)
+        if not exists:
+            await client.make_bucket(bucket)
             log.info("minio.bucket.created", bucket=bucket)
         else:
             log.info("minio.bucket.exists", bucket=bucket)
 
 
 if __name__ == "__main__":
-    init_buckets()
+    asyncio.run(init_buckets())
