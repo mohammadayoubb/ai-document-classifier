@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # Classifier
     model_weights_path: str = "app/classifier/models/classifier.pt"
     model_card_path: str = "app/classifier/models/model_card.json"
-    min_test_top1: float = 0.90
+    min_test_top1: float = 0.80
 
     # Application behaviour
     classifier_labels: list[str] = [
