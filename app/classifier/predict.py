@@ -1,10 +1,10 @@
-"""Single-image prediction helper for the document classifier.
+"""Prediction helpers for the document classifier.
 
-This module is responsible for:
-- loading images from path, bytes, or PIL
-- applying the same preprocessing used during training
-- running classifier inference
-- returning top-1 label, confidence, top-5 labels/scores, and low-confidence flag
+This module exposes the teammate-compatible API:
+
+    classify_image(model, image_bytes, labels) -> PredictionResult
+
+It also provides optional reusable predictor helpers for API/worker code.
 
 No environment variables are read here.
 Settings are injected or loaded through get_settings().
@@ -17,13 +17,23 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import logging
+
 import torch
 import torch.nn as nn
 from PIL import Image, ImageFile, UnidentifiedImageError
 from torchvision import transforms
 
 from app.config import Settings, get_settings
-from app.classifier.model import ClassifierArtifactError, load_and_verify_classifier
+from app.classifier.model import ClassifierArtifactError, load_and_verify
+
+try:
+    import structlog
+
+    log = structlog.get_logger()
+except ImportError:
+    log = logging.getLogger(__name__)
+
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -33,43 +43,35 @@ class ClassifierPredictionError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class TopPrediction:
-    """One prediction item."""
+class PredictionResult:
+    """Result of running inference on one image.
+
+    Attributes:
+        label: Top-1 predicted document class name.
+        confidence: Top-1 confidence score in [0.0, 1.0].
+        top5_labels: Top-5 class names ordered by confidence descending.
+        top5_scores: Corresponding top-5 confidence scores.
+    """
 
     label: str
     confidence: float
-    class_index: int
-
-
-@dataclass(frozen=True)
-class ClassifierPrediction:
-    """Classifier prediction result."""
-
-    label: str
-    confidence: float
-    class_index: int
-    top5: list[TopPrediction]
-    low_confidence: bool
+    top5_labels: list[str]
+    top5_scores: list[float]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert prediction result to a JSON-friendly dictionary."""
-        return {
-            "label": self.label,
-            "confidence": self.confidence,
-            "class_index": self.class_index,
-            "top5": [asdict(item) for item in self.top5],
-            "low_confidence": self.low_confidence,
-        }
+        return asdict(self)
 
 
 def build_eval_transform(input_size: int = 224) -> transforms.Compose:
-    """Build the exact evaluation transform used in the training notebook.
+    """Build the evaluation transform used during training.
 
-    Args:
-        input_size: Final image crop size.
-
-    Returns:
-        Torchvision transform pipeline.
+    Training notebook eval transform:
+    - convert grayscale/TIFF document to RGB
+    - resize shorter side to 256
+    - center crop to 224x224
+    - convert to tensor
+    - normalize with ImageNet mean/std
     """
     imagenet_mean = [0.485, 0.456, 0.406]
     imagenet_std = [0.229, 0.224, 0.225]
@@ -85,18 +87,40 @@ def build_eval_transform(input_size: int = 224) -> transforms.Compose:
     )
 
 
-def load_pil_image_from_path(image_path: str | Path) -> Image.Image:
-    """Load an image from a file path.
+def validate_labels(labels: list[str]) -> None:
+    """Validate ordered classifier labels."""
+    if not labels:
+        raise ValueError("labels must not be empty.")
+
+    if len(set(labels)) != len(labels):
+        raise ValueError("labels contains duplicate class names.")
+
+
+def load_pil_image_from_bytes(image_bytes: bytes) -> Image.Image:
+    """Decode raw image bytes into an RGB PIL image.
 
     Args:
-        image_path: Path to image file.
+        image_bytes: Raw TIFF/PNG/JPEG/etc. bytes.
 
     Returns:
-        Loaded RGB PIL image.
+        RGB PIL image.
 
     Raises:
-        ClassifierPredictionError: If the image cannot be opened.
+        ValueError: If the bytes cannot be decoded as an image.
     """
+    if not image_bytes:
+        raise ValueError("image_bytes cannot be empty.")
+
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
+        return image.convert("RGB")
+    except (UnidentifiedImageError, OSError, ValueError) as error:
+        raise ValueError("image_bytes could not be decoded as a valid image.") from error
+
+
+def load_pil_image_from_path(image_path: str | Path) -> Image.Image:
+    """Load an image from a local file path."""
     path = Path(image_path)
 
     if not path.exists():
@@ -113,49 +137,96 @@ def load_pil_image_from_path(image_path: str | Path) -> Image.Image:
         raise ClassifierPredictionError(f"Could not load image file: {path}") from error
 
 
-def load_pil_image_from_bytes(image_bytes: bytes) -> Image.Image:
-    """Load an image from raw bytes.
+def get_model_device(model: nn.Module) -> torch.device:
+    """Return the device where the model currently lives."""
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        return torch.device("cpu")
+
+
+def classify_image(
+    model: torch.nn.Module,
+    image_bytes: bytes,
+    labels: list[str],
+) -> PredictionResult:
+    """Run inference on raw image bytes and return top-1 and top-5 results.
+
+    Designed to run in the RQ worker thread — synchronous, no async I/O.
+    For use from an async context, wrap with asyncio.to_thread().
+
+    p95 latency target: < 1.0s on CPU with ConvNeXt Tiny.
 
     Args:
-        image_bytes: Raw image bytes.
+        model: Loaded ConvNeXt model in eval mode.
+        image_bytes: Raw TIFF/PNG/JPEG bytes from MinIO.
+        labels: Ordered list of 16 RVL-CDIP class names.
 
     Returns:
-        Loaded RGB PIL image.
+        PredictionResult with top-1 label, confidence, and top-5.
 
     Raises:
-        ClassifierPredictionError: If bytes cannot be decoded as an image.
+        ValueError: If image_bytes cannot be decoded or labels are invalid.
+        ClassifierPredictionError: If inference fails.
     """
-    if not image_bytes:
-        raise ClassifierPredictionError("Image bytes are empty.")
+    validate_labels(labels)
+
+    image = load_pil_image_from_bytes(image_bytes)
+    transform = build_eval_transform(input_size=224)
+
+    model.eval()
+    device = get_model_device(model)
 
     try:
-        image = Image.open(BytesIO(image_bytes))
-        image.load()
-        return image.convert("RGB")
-    except (UnidentifiedImageError, OSError, ValueError) as error:
-        raise ClassifierPredictionError("Could not decode image bytes.") from error
+        tensor = transform(image).unsqueeze(0).to(device)
 
+        with torch.inference_mode():
+            logits = model(tensor)
+            probabilities = torch.softmax(logits, dim=1)
 
-def validate_labels(labels: list[str]) -> None:
-    """Validate classifier labels from settings.
+            top_k = min(5, len(labels))
+            top_scores, top_indices = torch.topk(probabilities, k=top_k, dim=1)
 
-    Args:
-        labels: Class labels from Settings.
+        top_indices_list = top_indices[0].detach().cpu().tolist()
+        top_scores_list = top_scores[0].detach().cpu().tolist()
 
-    Raises:
-        ClassifierPredictionError: If labels are missing or invalid.
-    """
-    if not labels:
-        raise ClassifierPredictionError("settings.classifier_labels must not be empty.")
+        top5_labels = []
+        top5_scores = []
 
-    if len(set(labels)) != len(labels):
-        raise ClassifierPredictionError("settings.classifier_labels contains duplicate labels.")
+        for class_index, score in zip(top_indices_list, top_scores_list, strict=True):
+            if class_index >= len(labels):
+                raise ClassifierPredictionError(
+                    "Model output class index does not match provided labels."
+                )
+
+            top5_labels.append(labels[int(class_index)])
+            top5_scores.append(float(score))
+
+        result = PredictionResult(
+            label=top5_labels[0],
+            confidence=top5_scores[0],
+            top5_labels=top5_labels,
+            top5_scores=top5_scores,
+        )
+
+        log.info(
+            "classifier.predicted",
+            label=result.label,
+            confidence=result.confidence,
+        )
+
+        return result
+
+    except ClassifierPredictionError:
+        raise
+    except RuntimeError as error:
+        raise ClassifierPredictionError("Classifier inference failed.") from error
 
 
 class ClassifierPredictor:
     """Reusable classifier predictor.
 
-    The API/worker should create this once at startup and reuse it.
+    The API/worker can create this once at startup and reuse it.
     """
 
     def __init__(
@@ -170,7 +241,6 @@ class ClassifierPredictor:
         self.settings = settings
         self.labels = settings.classifier_labels
         self.device = torch.device(device)
-        self.transform = build_eval_transform(input_size=224)
 
         self.model = model.to(self.device)
         self.model.eval()
@@ -178,67 +248,24 @@ class ClassifierPredictor:
         for parameter in self.model.parameters():
             parameter.requires_grad = False
 
-    @torch.inference_mode()
-    def predict_pil_image(self, image: Image.Image) -> ClassifierPrediction:
-        """Classify one PIL image.
-
-        Args:
-            image: PIL image.
-
-        Returns:
-            Prediction result.
-
-        Raises:
-            ClassifierPredictionError: If inference fails.
-        """
-        try:
-            image = image.convert("RGB")
-            tensor = self.transform(image).unsqueeze(0).to(self.device)
-
-            logits = self.model(tensor)
-            probabilities = torch.softmax(logits, dim=1)
-
-            top_k = min(5, len(self.labels))
-            top_scores, top_indices = torch.topk(probabilities, k=top_k, dim=1)
-
-            top_scores_list = top_scores[0].detach().cpu().tolist()
-            top_indices_list = top_indices[0].detach().cpu().tolist()
-
-            top_predictions = [
-                TopPrediction(
-                    label=self.labels[class_index],
-                    confidence=float(score),
-                    class_index=int(class_index),
-                )
-                for class_index, score in zip(top_indices_list, top_scores_list, strict=True)
-            ]
-
-            best = top_predictions[0]
-
-            return ClassifierPrediction(
-                label=best.label,
-                confidence=best.confidence,
-                class_index=best.class_index,
-                top5=top_predictions,
-                low_confidence=best.confidence < self.settings.low_confidence_threshold,
-            )
-
-        except IndexError as error:
-            raise ClassifierPredictionError(
-                "Model output class index does not match settings.classifier_labels."
-            ) from error
-        except RuntimeError as error:
-            raise ClassifierPredictionError("Classifier inference failed.") from error
-
-    def predict_path(self, image_path: str | Path) -> ClassifierPrediction:
-        """Classify one image from a file path."""
-        image = load_pil_image_from_path(image_path)
-        return self.predict_pil_image(image)
-
-    def predict_bytes(self, image_bytes: bytes) -> ClassifierPrediction:
+    def predict_bytes(self, image_bytes: bytes) -> PredictionResult:
         """Classify one image from raw bytes."""
-        image = load_pil_image_from_bytes(image_bytes)
-        return self.predict_pil_image(image)
+        return classify_image(
+            model=self.model,
+            image_bytes=image_bytes,
+            labels=self.labels,
+        )
+
+    def predict_path(self, image_path: str | Path) -> PredictionResult:
+        """Classify one image from a local file path."""
+        path = Path(image_path)
+
+        try:
+            image_bytes = path.read_bytes()
+        except OSError as error:
+            raise ClassifierPredictionError(f"Could not read image file: {path}") from error
+
+        return self.predict_bytes(image_bytes)
 
 
 def create_classifier_predictor(
@@ -246,25 +273,15 @@ def create_classifier_predictor(
     *,
     device: torch.device | str = "cpu",
 ) -> ClassifierPredictor:
-    """Create a verified classifier predictor.
+    """Create a verified reusable classifier predictor.
 
-    This loads and verifies classifier.pt using model.py.
-
-    Args:
-        settings: Optional application settings. If omitted, get_settings() is used.
-        device: Inference device. Default is CPU.
-
-    Returns:
-        Ready-to-use predictor.
-
-    Raises:
-        ClassifierArtifactError: If model artifacts are invalid.
-        ClassifierPredictionError: If predictor setup fails.
+    Uses app.classifier.model.load_and_verify(settings), which is the
+    teammate-compatible verified model loader.
     """
     resolved_settings = settings or get_settings()
 
     try:
-        model = load_and_verify_classifier(resolved_settings)
+        model = load_and_verify(resolved_settings)
     except ClassifierArtifactError:
         raise
     except Exception as error:
@@ -277,22 +294,6 @@ def create_classifier_predictor(
     )
 
 
-def predict_image_path(
-    image_path: str | Path,
-    settings: Settings | None = None,
-    *,
-    device: torch.device | str = "cpu",
-) -> dict[str, Any]:
-    """Convenience function for classifying one image path.
-
-    This loads the model each time, so it is useful for scripts/tests.
-    In the API/worker, prefer creating ClassifierPredictor once and reusing it.
-    """
-    predictor = create_classifier_predictor(settings=settings, device=device)
-    prediction = predictor.predict_path(image_path)
-    return prediction.to_dict()
-
-
 def predict_image_bytes(
     image_bytes: bytes,
     settings: Settings | None = None,
@@ -301,9 +302,23 @@ def predict_image_bytes(
 ) -> dict[str, Any]:
     """Convenience function for classifying one image from bytes.
 
-    This loads the model each time, so it is useful for small scripts/tests.
-    In the API/worker, prefer creating ClassifierPredictor once and reusing it.
+    This loads the model each time, so it is useful for scripts/tests.
+    In API/worker code, prefer creating ClassifierPredictor once.
     """
     predictor = create_classifier_predictor(settings=settings, device=device)
-    prediction = predictor.predict_bytes(image_bytes)
-    return prediction.to_dict()
+    return predictor.predict_bytes(image_bytes).to_dict()
+
+
+def predict_image_path(
+    image_path: str | Path,
+    settings: Settings | None = None,
+    *,
+    device: torch.device | str = "cpu",
+) -> dict[str, Any]:
+    """Convenience function for classifying one image from a local path.
+
+    This loads the model each time, so it is useful for scripts/tests.
+    In API/worker code, prefer creating ClassifierPredictor once.
+    """
+    predictor = create_classifier_predictor(settings=settings, device=device)
+    return predictor.predict_path(image_path).to_dict()
