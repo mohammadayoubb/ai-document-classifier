@@ -27,7 +27,8 @@ class Settings(BaseSettings):
 
     # Resolved at runtime from Vault — empty default, overridden in lifespan
     jwt_signing_key: str = ""
-
+    # JWT
+    jwt_lifetime_seconds: int = 3600
     # Infrastructure URLs injected by docker-compose environment section
     database_url: str = Field(..., min_length=1)
     redis_url: str = "redis://localhost:6379"
