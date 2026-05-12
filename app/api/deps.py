@@ -1,100 +1,119 @@
-"""FastAPI dependency injection functions shared across all routes.
+"""API dependency wiring.
 
-All Depends() callables live here. Routes declare what they need; this module
-delivers it. No route body constructs any collaborator directly.
+This file centralizes FastAPI Depends() helpers.
+Routes should receive repositories, services, and current users through these
+dependencies instead of constructing objects inside route functions.
 """
 
-from typing import Annotated, Any
+from collections.abc import AsyncGenerator
 
-import structlog
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_session
+from app.db.session import SessionLocal
+from app.domain.user import UserDomain, UserRole
+from app.repositories.user_repo import UserRepository
+from app.services.audit_service import AuditService
+from app.services.user_service import UserService
 
-log = structlog.get_logger()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/jwt/login")
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    """Provide one database session per request.
 
+    The dependency owns the session lifecycle:
+    open session -> yield to route/service -> commit on success -> rollback on error.
 
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> Any:
-    """Decode JWT and return the authenticated user.
-
-    Args:
-        token: Bearer token extracted from the Authorization header.
-        session: Injected async database session.
-
-    Returns:
-        The authenticated UserDomain object (resolved in Phase 4).
-
-    Raises:
-        HTTPException: 401 if the token is missing, expired, or invalid.
+    Routes should never manually commit, rollback, or close the session.
     """
-    # TODO: Phase 4 — decode JWT with app.state.jwt_key, load UserDomain from DB
-    raise HTTPException(status_code=401, detail="Authentication not yet implemented")
+    async with SessionLocal() as session:
+        try:
+            yield session
+
+            # Commit happens here after the route/service finishes successfully.
+            await session.commit()
+        except Exception:
+            # Rollback protects the DB from partial writes if anything fails.
+            await session.rollback()
+            raise
+
+
+def get_user_repository(
+    session: AsyncSession = Depends(get_session),
+) -> UserRepository:
+    """Create a user repository for the current request.
+
+    The repository receives the request-scoped session and performs SQL only.
+    """
+    return UserRepository(session=session)
+
+
+def get_audit_service(
+    user_repo: UserRepository = Depends(get_user_repository),
+) -> AuditService:
+    """Create the audit service.
+
+    AuditService uses the repository to write/read audit log records.
+    Business decisions about when to audit belong in services, not routes.
+    """
+    return AuditService(user_repo=user_repo)
+
+
+def get_user_service(
+    user_repo: UserRepository = Depends(get_user_repository),
+    audit_service: AuditService = Depends(get_audit_service),
+) -> UserService:
+    """Create the user service.
+
+    UserService owns role-change business rules and calls AuditService when
+    a role change must be recorded.
+    """
+    return UserService(
+        user_repo=user_repo,
+        audit_service=audit_service,
+    )
+
+
+async def get_current_user() -> UserDomain:
+    """Return the authenticated user.
+
+    This is a temporary placeholder until fastapi-users JWT auth is wired.
+    Replace this with real JWT-based user loading in the authentication phase.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication is not wired yet",
+    )
 
 
 async def require_admin(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Gate access to admin-only endpoints.
+    current_user: UserDomain = Depends(get_current_user),
+) -> UserDomain:
+    """Require the current user to be an admin.
 
-    Args:
-        user: The authenticated user from get_current_user.
-
-    Returns:
-        The user if they hold the admin role.
-
-    Raises:
-        HTTPException: 403 if the user lacks the admin role.
+    401 is handled by get_current_user.
+    403 is returned here when the user is authenticated but lacks permission.
     """
-    if getattr(user, "role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-    return user
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+
+    return current_user
 
 
 async def require_reviewer_or_above(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Gate access to reviewer-or-admin endpoints.
+    current_user: UserDomain = Depends(get_current_user),
+) -> UserDomain:
+    """Require reviewer or admin access.
 
-    Args:
-        user: The authenticated user from get_current_user.
-
-    Returns:
-        The user if they hold the reviewer or admin role.
-
-    Raises:
-        HTTPException: 403 if the user lacks the required role.
+    Reviewers and admins can perform review actions.
+    Auditors are read-only and should fail this check.
     """
-    if getattr(user, "role", None) not in ("admin", "reviewer"):
-        raise HTTPException(status_code=403, detail="Reviewer role required")
-    return user
+    if current_user.role not in {UserRole.ADMIN, UserRole.REVIEWER}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reviewer role required",
+        )
 
-
-def get_queue(request: Request) -> Any:
-    """Return the RQ job queue singleton from application state.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        The RQ Queue instance stored in app.state.queue (set in lifespan).
-    """
-    return request.app.state.queue
-
-
-def get_classifier(request: Request) -> Any:
-    """Return the loaded ConvNeXt model from application state.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        The PyTorch model stored in app.state.classifier (set in lifespan).
-    """
-    return request.app.state.classifier
+    return current_user
