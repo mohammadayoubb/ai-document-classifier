@@ -1,71 +1,124 @@
-"""User and audit log business logic — role management and event recording."""
+"""User service.
 
-from typing import Any
+This service owns user-related business logic such as role changes,
+audit logging, and safety checks.
+"""
 
-import structlog
+import json
 
-log = structlog.get_logger()
+from app.domain.audit import AuditAction
+from app.domain.user import UserDomain, UserRole
+from app.repositories.user_repo import UserRepository
+from app.services.audit_service import AuditService
+
+
+class UserNotFoundError(Exception):
+    """Raised when a requested user does not exist."""
+
+
+class CannotDemoteLastAdminError(Exception):
+    """Raised when the last active admin tries to remove their own admin role."""
 
 
 class UserService:
-    """Manages user role changes, audit logging, and user cache invalidation.
+    """Service layer for user operations.
 
-    Args:
-        repo: The UserRepository for SQL operations.
-        cache: The CacheAdapter for invalidating user profile caches.
+    This class contains business rules. Repositories only perform SQL queries,
+    while routes only translate service results/errors into HTTP responses.
     """
 
-    def __init__(self, repo: Any, cache: Any) -> None:
-        self._repo = repo
-        self._cache = cache
+    def __init__(
+        self,
+        user_repo: UserRepository,
+        audit_service: AuditService,
+    ) -> None:
+        self._user_repo = user_repo
+        self._audit_service = audit_service
 
-    async def toggle_role(self, user_id: int, new_role: str, actor_id: int) -> Any:
-        """Change a user's role, update Casbin policy, and write an audit log entry.
-
-        Guards against demoting the last admin — raises ValueError in that case.
-        Invalidates the affected user's profile cache so the change takes effect
-        on their next request without requiring re-login.
+    async def get_user_by_id(self, user_id: int) -> UserDomain:
+        """Return a user by ID.
 
         Args:
-            user_id: Primary key of the user whose role will change.
-            new_role: The new role — one of "admin", "reviewer", "auditor".
-            actor_id: Primary key of the admin performing the change.
+            user_id: User primary key.
 
         Returns:
-            The updated UserDomain instance.
+            The user as a domain model.
 
         Raises:
-            LookupError: If the target user does not exist.
-            ValueError: If this would demote the only remaining admin.
+            UserNotFoundError: If the user does not exist.
         """
-        # TODO: Phase 5
-        ...  # type: ignore[return-value]
+        user = await self._user_repo.get_by_id(user_id)
 
-    async def record_audit(
+        if user is None:
+            raise UserNotFoundError(f"User {user_id} was not found")
+
+        return UserDomain.model_validate(user)
+
+    async def change_user_role(
         self,
+        *,
         actor_id: int,
-        action: str,
-        target: str,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """Write an immutable audit log entry.
-
-        Called from services only — never invoked from routes.
+        target_user_id: int,
+        new_role: UserRole,
+    ) -> UserDomain:
+        """Change a user's role and write an audit log entry.
 
         Args:
-            actor_id: Primary key of the user performing the action.
-            action: Event type — "role_change", "relabel", or "batch_state_change".
-            target: Human-readable description of what changed.
-            metadata: Optional JSON-serialisable extra context (e.g., old/new role).
-        """
-        # TODO: Phase 5
-        ...
-
-    async def list_audit_log(self) -> list[Any]:
-        """Return all audit log entries ordered by timestamp descending.
+            actor_id: ID of the admin performing the change.
+            target_user_id: ID of the user whose role is being changed.
+            new_role: New role to assign.
 
         Returns:
-            A list of AuditLogDomain instances.
+            Updated user as a domain model.
+
+        Raises:
+            UserNotFoundError: If the target user does not exist.
+            CannotDemoteLastAdminError: If the last active admin tries to
+                demote themselves.
         """
-        # TODO: Phase 5
-        return []
+        target_user = await self._user_repo.get_by_id(target_user_id)
+
+        if target_user is None:
+            raise UserNotFoundError(f"User {target_user_id} was not found")
+
+        old_role = UserRole(target_user.role)
+
+        # Safety rule: the system must always keep at least one active admin.
+        # This prevents the only admin from locking the team out of role management.
+        if (
+            actor_id == target_user_id
+            and old_role == UserRole.ADMIN
+            and new_role != UserRole.ADMIN
+        ):
+            admin_count = await self._user_repo.count_by_role(UserRole.ADMIN.value)
+
+            if admin_count <= 1:
+                raise CannotDemoteLastAdminError(
+                    "The last active admin cannot demote themselves"
+                )
+
+        updated_user = await self._user_repo.update_role(
+            user_id=target_user_id,
+            new_role=new_role.value,
+        )
+
+        if updated_user is None:
+            raise UserNotFoundError(f"User {target_user_id} was not found")
+
+        # Role changes are audit-able events and must always be recorded.
+        await self._audit_service.record(
+            actor_id=actor_id,
+            action=AuditAction.ROLE_CHANGE,
+            target=f"user:{target_user_id}",
+            metadata=json.dumps(
+                {
+                    "old_role": old_role.value,
+                    "new_role": new_role.value,
+                }
+            ),
+        )
+
+        # TODO: Inject CacheAdapter later and invalidate the target user's /users/me cache.
+        # Cache invalidation belongs here in the service layer, never in routes or repositories.
+
+        return UserDomain.model_validate(updated_user)

@@ -1,70 +1,48 @@
-"""User and audit log SQL repository — data access only, no business logic."""
+"""User SQL repository — data access only, no business logic."""
 
+from typing import cast
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AuditLog, User
+from app.db.models import User
 
 
 class UserRepository:
-    """SQL-only data access for the users and audit_log tables.
-
-    Args:
-        session: Async database session injected via Depends().
-    """
+    """SQL-only data access for the users and audit_log tables."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def get_by_id(self, user_id: int) -> User | None:
-        """Look up a user by primary key.
-
-        Args:
-            user_id: The user primary key.
-
-        Returns:
-            The User ORM instance, or None if not found.
-        """
-        # TODO: Phase 4
-        return None
+        """Look up a user by primary key."""
+        return cast(User | None, await self._session.get(User, user_id))
 
     async def get_by_email(self, email: str) -> User | None:
-        """Look up a user by email address.
+        """Look up a user by email address."""
+        stmt = select(User).where(User.email == email)
+        result = await self._session.execute(stmt)
+        return cast(User | None, result.scalar_one_or_none())
 
-        Args:
-            email: The email address to search for.
+    async def update_role(self, user_id: int, new_role: str) -> User | None:
+        """Update a user's role column."""
+        user = await self.get_by_id(user_id)
+        if user is None:
+            return None
 
-        Returns:
-            The User ORM instance, or None if not found.
-        """
-        # TODO: Phase 4
-        return None
-
-    async def update_role(self, user_id: int, new_role: str) -> User:
-        """Update a user's role column.
-
-        Args:
-            user_id: The user primary key.
-            new_role: The new role string.
-
-        Returns:
-            The updated User ORM instance.
-        """
-        # TODO: Phase 5
-        ...  # type: ignore[return-value]
+        user.role = new_role
+        await self._session.flush()
+        await self._session.refresh(user)
+        return user
 
     async def count_by_role(self, role: str) -> int:
-        """Count users holding a specific role.
-
-        Used by the service layer to prevent demotion of the last admin.
-
-        Args:
-            role: The role string to count.
-
-        Returns:
-            The number of active users holding that role.
-        """
-        # TODO: Phase 5
-        return 0
+        """Count active users holding a specific role."""
+        stmt = select(func.count(User.id)).where(
+            User.role == role,
+            User.is_active.is_(True),
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def create_audit_entry(
         self,
@@ -73,25 +51,25 @@ class UserRepository:
         target: str,
         metadata: str | None,
     ) -> AuditLog:
-        """Insert an immutable audit log row.
+        """Insert an immutable audit log row."""
+        entry = AuditLog(
+            actor_id=actor_id,
+            action=action,
+            target=target,
+            metadata_=metadata,
+        )
+        self._session.add(entry)
+        await self._session.flush()
+        await self._session.refresh(entry)
+        return entry
 
-        Args:
-            actor_id: Primary key of the user performing the action.
-            action: Event type string.
-            target: Human-readable description of what changed.
-            metadata: Optional JSON-serialised extra context.
-
-        Returns:
-            The newly inserted AuditLog ORM instance.
-        """
-        # TODO: Phase 5
-        ...  # type: ignore[return-value]
-
-    async def list_audit_log(self) -> list[AuditLog]:
-        """Return all audit log rows ordered by timestamp descending.
-
-        Returns:
-            A list of AuditLog ORM instances.
-        """
-        # TODO: Phase 5
-        return []
+    async def list_audit_log(self, limit: int = 100, offset: int = 0) -> list[AuditLog]:
+        """Return audit log rows ordered by timestamp descending."""
+        stmt = (
+            select(AuditLog)
+            .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

@@ -31,3 +31,6 @@ htmlcov/
 
 # Logs (runtime files, not source)
 logs/*.log
+
+# Local reference folder
+1refernce/
