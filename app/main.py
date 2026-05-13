@@ -11,7 +11,7 @@ from app.auth.backend import auth_backend
 from app.auth.fastapi_users import fastapi_users
 from app.auth.schemas import AuthUserCreate, AuthUserRead
 from app.config import get_settings
-from app.infra.casbin_enforcer import verify_policies_loaded
+from app.db.session import dispose_engine, init_engine
 from app.infra.vault import VaultClient
 
 log = structlog.get_logger()
@@ -38,6 +38,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             dependency is unavailable.
     """
     settings = get_settings()
+    vault_client = VaultClient(settings.vault_addr, settings.vault_token)
+    if not vault_client.is_reachable():
+        raise RuntimeError("Vault is unreachable or the configured token is invalid.")
+
+    database_url = settings.build_database_url_from_vault(vault_client)
+    init_engine(database_url)
 
     # Phase 4 — Vault startup contract.
     # Secrets must come from Vault, not hardcoded environment variables.
@@ -76,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     log.info("app.startup.complete")
     yield
+    await dispose_engine()
     log.info("app.shutdown.complete")
 
 

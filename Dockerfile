@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir \
 # torch and torchvision are large — separate layer to keep rebuilds fast
 RUN pip install --no-cache-dir "torch>=2.4.0" "torchvision>=0.19.0"
 
+COPY alembic.ini ./
 COPY app/ ./app/
 
 FROM base AS api

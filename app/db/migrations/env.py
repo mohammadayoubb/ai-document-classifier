@@ -1,54 +1,42 @@
-"""Alembic migration environment.
+"""Alembic environment for async SQLAlchemy migrations."""
 
-This file connects Alembic to the application's SQLAlchemy models so schema
-changes can be generated and applied through migrations.
-"""
+from __future__ import annotations
 
-import os
+import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.config import get_settings
 from app.db.models import Base
+from app.infra.vault import VaultClient
 
-# Alembic Config object, loaded from alembic.ini.
 config = context.config
 
-# Configure Python logging from alembic.ini if logging config exists.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Use DATABASE_URL from the environment when available.
-# This keeps local runs, Docker, and CI aligned.
-database_url = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/docclassifier",
-)
-
-# Alembic runs migrations synchronously, so we convert the async driver URL
-# into a synchronous PostgreSQL URL for migration generation/execution.
-sync_database_url = database_url.replace(
-    "postgresql+asyncpg://",
-    "postgresql://",
-)
-
-config.set_main_option("sqlalchemy.url", sync_database_url)
-
-# Alembic compares this metadata against the database schema.
-# This is why app.db.models.Base must include all ORM models.
 target_metadata = Base.metadata
 
 
+def get_url() -> str:
+    """Return the DB URL using the same secret-aware settings path as the app."""
+    settings = get_settings()
+    if not settings.database_url and not settings.postgres_password:
+        vault_client = VaultClient(settings.vault_addr, settings.vault_token)
+        if not vault_client.is_reachable():
+            raise RuntimeError("Vault is unreachable or the configured token is invalid.")
+        return settings.build_database_url_from_vault(vault_client)
+    return settings.build_database_url()
+
+
 def run_migrations_offline() -> None:
-    """Run migrations without creating a DB engine.
-
-    Offline mode emits SQL statements instead of connecting directly.
-    """
-    url = config.get_main_option("sqlalchemy.url")
-
+    """Run migrations without opening a DB connection."""
     context.configure(
-        url=url,
+        url=get_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -58,25 +46,34 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    """Run migrations with a live database connection.
+def do_run_migrations(connection: Connection) -> None:
+    """Configure Alembic with an existing connection and run migrations."""
+    context.configure(connection=connection, target_metadata=target_metadata)
 
-    This is the normal mode used by `alembic upgrade head` and autogenerate.
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    """Create an async engine and run migrations through a sync connection."""
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = get_url()
+
+    connectable = async_engine_from_config(
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
 
-        with context.begin_transaction():
-            context.run_migrations()
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    """Run migrations with a live async DB connection."""
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
