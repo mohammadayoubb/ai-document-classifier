@@ -25,8 +25,8 @@ async def list_recent_predictions(
     Returns:
         A list of PredictionDomain objects ordered by creation time descending.
     """
-    # TODO: Phase 6 — @cache(expire=settings.cache_ttl_recent), call prediction_service.list_recent()
-    return []
+# TODO: Phase 6 — cache this endpoint with settings.cache_ttl_recent.
+# Call prediction_service.list_recent() when the service is ready.    return []
 
 
 @router.patch("/{pred_id}/relabel")

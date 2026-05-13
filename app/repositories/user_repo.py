@@ -1,97 +1,58 @@
-"""User and audit log SQL repository — data access only, no business logic."""
+"""User SQL repository — data access only, no business logic."""
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AuditLog, User
+from app.db.models import User
 
 
 class UserRepository:
-    """SQL-only data access for the users and audit_log tables.
-
-    Args:
-        session: Async database session injected via Depends().
-    """
+    """SQL-only data access for the users table."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def get_by_id(self, user_id: int) -> User | None:
-        """Look up a user by primary key.
-
-        Args:
-            user_id: The user primary key.
-
-        Returns:
-            The User ORM instance, or None if not found.
-        """
-        # TODO: Phase 4
-        return None
+        """Look up a user by primary key."""
+        statement = select(User).where(User.__table__.c.id == user_id)
+        result = await self._session.execute(statement)
+        return result.scalar_one_or_none()
 
     async def get_by_email(self, email: str) -> User | None:
-        """Look up a user by email address.
+        """Look up a user by email address."""
+        statement = select(User).where(User.__table__.c.email == email)
+        result = await self._session.execute(statement)
+        return result.scalar_one_or_none()
 
-        Args:
-            email: The email address to search for.
-
-        Returns:
-            The User ORM instance, or None if not found.
-        """
-        # TODO: Phase 4
-        return None
-
-    async def update_role(self, user_id: int, new_role: str) -> User:
+    async def update_role(self, user_id: int, new_role: str) -> User | None:
         """Update a user's role column.
 
-        Args:
-            user_id: The user primary key.
-            new_role: The new role string.
-
-        Returns:
-            The updated User ORM instance.
+        The repository only performs the update. It does not decide whether
+        the role change is allowed.
         """
-        # TODO: Phase 5
-        ...  # type: ignore[return-value]
+        user = await self.get_by_id(user_id)
+
+        if user is None:
+            return None
+
+        user.role = new_role
+
+        # Flush sends the UPDATE without committing.
+        # The session dependency owns commit/rollback.
+        await self._session.flush()
+
+        return user
 
     async def count_by_role(self, role: str) -> int:
-        """Count users holding a specific role.
+        """Count active users holding a specific role."""
+        statement = (
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.__table__.c.role == role,
+                User.__table__.c.is_active.is_(True),
+            )
+        )
 
-        Used by the service layer to prevent demotion of the last admin.
-
-        Args:
-            role: The role string to count.
-
-        Returns:
-            The number of active users holding that role.
-        """
-        # TODO: Phase 5
-        return 0
-
-    async def create_audit_entry(
-        self,
-        actor_id: int,
-        action: str,
-        target: str,
-        metadata: str | None,
-    ) -> AuditLog:
-        """Insert an immutable audit log row.
-
-        Args:
-            actor_id: Primary key of the user performing the action.
-            action: Event type string.
-            target: Human-readable description of what changed.
-            metadata: Optional JSON-serialised extra context.
-
-        Returns:
-            The newly inserted AuditLog ORM instance.
-        """
-        # TODO: Phase 5
-        ...  # type: ignore[return-value]
-
-    async def list_audit_log(self) -> list[AuditLog]:
-        """Return all audit log rows ordered by timestamp descending.
-
-        Returns:
-            A list of AuditLog ORM instances.
-        """
-        # TODO: Phase 5
-        return []
+        result = await self._session.execute(statement)
+        return int(result.scalar_one())
