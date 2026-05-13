@@ -1,0 +1,173 @@
+{
+  "project": "document-classifier-as-authenticated-service",
+  "sha256": "b9b2a9c7247094679f5b4b8817071c6d6dd9b0103f61bc85166cff5ed912307a",
+  "required_test_top1": 0.8,
+  "test_top1": 0.8529213230330758,
+  "test_top5": 0.973374334358359,
+  "golden_top1": 1.0,
+  "passes_required_test_top1": true,
+  "backbone": "convnext_tiny",
+  "torchvision_weights_enum": "ConvNeXt_Tiny_Weights.IMAGENET1K_V1",
+  "freeze_policy": "partial_unfreeze",
+  "dataset": {
+    "name": "RVL-CDIP",
+    "source": "adamharley.com/rvl-cdip",
+    "task": "visual_document_layout_classification",
+    "num_classes": 16,
+    "classes": [
+      "letter",
+      "form",
+      "email",
+      "handwritten",
+      "advertisement",
+      "scientific_report",
+      "scientific_publication",
+      "specification",
+      "file_folder",
+      "news_article",
+      "budget",
+      "invoice",
+      "presentation",
+      "questionnaire",
+      "resume",
+      "memo"
+    ],
+    "note": "No OCR used. The model classifies visual document layout only."
+  },
+  "model": {
+    "backbone": "convnext_tiny",
+    "torchvision_weights_enum": "ConvNeXt_Tiny_Weights.IMAGENET1K_V1",
+    "freeze_policy": "partial_unfreeze",
+    "input_size": 224,
+    "input_channels": 3,
+    "input_mode": "grayscale_or_tiff_document_converted_to_RGB"
+  },
+  "training": {
+    "optimizer": "AdamW",
+    "learning_rate": 0.0001,
+    "weight_decay": 0.01,
+    "scheduler": "CosineAnnealingLR",
+    "epochs_max": 8,
+    "epochs_completed": 3,
+    "best_epoch": 3,
+    "batch_size": 128,
+    "num_workers": 0,
+    "train_examples_used": 90000,
+    "validation_examples_used": 10000,
+    "test_examples_expected": 40000,
+    "early_stopping": {
+      "enabled": true,
+      "patience": 2,
+      "min_delta": 0.001,
+      "metric": "validation_top1"
+    },
+    "seed": 42,
+    "augmentations": [
+      "Resize(256)",
+      "RandomRotation(5)",
+      "ColorJitter(brightness=0.15, contrast=0.15)",
+      "CenterCrop(224)",
+      "Normalize(ImageNet mean/std)"
+    ],
+    "streaming": {
+      "used": true,
+      "reason": "RVL-CDIP is large, so training and evaluation used Hugging Face streaming mode to avoid Colab disk-space issues.",
+      "decode_false_used": true,
+      "decode_false_reason": "Images were decoded manually so corrupted TIFF files could be skipped safely."
+    }
+  },
+  "metrics": {
+    "validation_best_top1": 0.8485,
+    "test_top1": 0.8529213230330758,
+    "test_top5": 0.973374334358359,
+    "test_loss": 0.5095190305193232,
+    "required_test_top1": 0.8,
+    "passes_required_test_top1": true,
+    "test_examples_expected": 40000,
+    "test_evaluated_images": 39999,
+    "test_skipped_unreadable_images": 1,
+    "golden_top1_against_true_labels": 1.0,
+    "golden_images_count": 50,
+    "golden_class_counts": {
+      "letter": 2,
+      "form": 4,
+      "email": 2,
+      "handwritten": 2,
+      "advertisement": 2,
+      "scientific_report": 4,
+      "scientific_publication": 3,
+      "specification": 2,
+      "file_folder": 7,
+      "news_article": 2,
+      "budget": 4,
+      "invoice": 2,
+      "presentation": 4,
+      "questionnaire": 4,
+      "resume": 3,
+      "memo": 3
+    },
+    "per_class_accuracy": {
+      "letter": 0.8409090909090909,
+      "form": 0.7366320830007981,
+      "email": 0.9296502384737679,
+      "handwritten": 0.919826224328594,
+      "advertisement": 0.9013916500994036,
+      "scientific_report": 0.7277822257806245,
+      "scientific_publication": 0.897705173084403,
+      "specification": 0.8438511326860841,
+      "file_folder": 0.9438068856351405,
+      "news_article": 0.8189200162403573,
+      "budget": 0.8243512974051896,
+      "invoice": 0.8837303189341946,
+      "presentation": 0.7922860586580956,
+      "questionnaire": 0.784394250513347,
+      "resume": 0.9081592432006307,
+      "memo": 0.8864365971107544
+    },
+    "worst_class": {
+      "name": "scientific_report",
+      "accuracy": 0.7277822257806245
+    }
+  },
+  "golden_set": {
+    "images_dir": "app/classifier/eval/golden_images",
+    "expected_file": "app/classifier/eval/golden_expected.json",
+    "count": 50,
+    "selection_policy": [
+      "Only correctly predicted test examples were selected.",
+      "At least two examples were selected per class when available.",
+      "The set includes easy, ambiguous, and lower-confidence edge examples.",
+      "Expected labels and confidence scores were generated from the exact saved TIFF files."
+    ],
+    "confidence_tolerance_for_ci": 1e-06
+  },
+  "artifact": {
+    "filename": "classifier.pt",
+    "path": "app/classifier/models/classifier.pt",
+    "sha256": "b9b2a9c7247094679f5b4b8817071c6d6dd9b0103f61bc85166cff5ed912307a",
+    "size_mb": 106.23645687103271,
+    "format": "torch_state_dict"
+  },
+  "environment": {
+    "python": "3.12.13",
+    "platform": "Linux-6.6.122+-x86_64-with-glibc2.35",
+    "torch": "2.10.0+cu128",
+    "torchvision": "0.25.0+cu128",
+    "datasets": "3.6.0",
+    "cuda_available": true,
+    "gpu": "Tesla T4"
+  },
+  "notes": [
+    "The configured required test top-1 threshold is 0.80.",
+    "This model achieved approximately 0.8529 test top-1 and passes the configured threshold.",
+    "One unreadable/corrupted TIFF image was skipped during full test evaluation.",
+    "The full RVL-CDIP dataset is not included in the repository.",
+    "Only classifier.pt, model_card.json, golden_images, and golden_expected.json are exported to the project repo."
+  ],
+  "latency_colab_estimate": {
+    "p50_ms": 40.314839001439395,
+    "p95_ms": 57.5812784487425,
+    "p99_ms": 67.57137154942028,
+    "mean_ms": 37.9030886801047
+  }
+}
