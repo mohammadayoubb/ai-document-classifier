@@ -1,11 +1,11 @@
-"""User and audit log SQL repository — data access only, no business logic."""
+"""User SQL repository — data access only, no business logic."""
 
 from typing import cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AuditLog, User
+from app.db.models import User
 
 
 class UserRepository:

@@ -1,73 +1,63 @@
-"""User management routes — profile, role toggle, and audit log.
+"""User API routes.
 
-Layer contract: one service call per endpoint, return a domain model.
-No SQLAlchemy imports, no cache operations, no business logic.
+Routes are HTTP-only:
+- receive dependencies with Depends()
+- call service methods
+- convert service errors into HTTP responses
+- return domain models
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
-import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import get_current_user, require_admin
-
-log = structlog.get_logger()
+from app.api.deps import get_current_user, get_user_service, require_admin
+from app.domain.user import UserDomain, UserRoleUpdateRequest
+from app.services.user_service import (
+    CannotDemoteLastAdminError,
+    UserNotFoundError,
+    UserService,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserDomain)
 async def get_me(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Return the authenticated user's own profile.
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
+) -> UserDomain:
+    """Return the current authenticated user.
 
-    Returns:
-        The current user's UserDomain model.
+    This endpoint is for any authenticated user, not only admins.
     """
-    # TODO: Phase 6 — @cache(expire=settings.cache_ttl_me), return UserDomain
-    return user
+    return current_user
 
 
-@router.put("/{user_id}/role")
-async def toggle_role(
+@router.put("/{user_id}/role", response_model=UserDomain)
+async def update_user_role(
     user_id: int,
-    new_role: str,
-    current_user: Annotated[Any, Depends(require_admin)],
-) -> Any:
-    """Toggle a user's role — admin only.
+    payload: UserRoleUpdateRequest,
+    current_user: Annotated[UserDomain, Depends(require_admin)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserDomain:
+    """Update a user's role.
 
-    Updates the Casbin policy and writes an audit log entry.
-    The affected user's permissions change on their next request, no re-login needed.
-
-    Args:
-        user_id: Primary key of the user whose role will change.
-        new_role: Target role — one of "admin", "reviewer", "auditor".
-        current_user: The authenticated admin performing this action.
-
-    Returns:
-        The updated UserDomain model.
-
-    Raises:
-        HTTPException: 403 if caller lacks admin role.
-        HTTPException: 404 if target user does not exist.
-        HTTPException: 409 if demoting the only remaining admin.
+    Only admins can call this route. The route delegates business rules to
+    UserService, including the last-admin safety check.
     """
-    # TODO: Phase 5 — call user_service.toggle_role(user_id, new_role, current_user.id)
-    raise HTTPException(status_code=501, detail="Not implemented")
-
-
-@router.get("/audit")
-async def list_audit_log(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> list[Any]:
-    """Return the full audit log.
-
-    Accessible by admin and auditor roles; reviewer is excluded.
-    Casbin policy enforcement is added in Phase 5.
-
-    Returns:
-        A list of AuditLogDomain models ordered by timestamp descending.
-    """
-    # TODO: Phase 5 — enforce admin-or-auditor via Casbin, call user_service.list_audit_log()
-    return []
+    try:
+        return await user_service.change_user_role(
+            actor_id=current_user.id,
+            target_user_id=user_id,
+            new_role=payload.new_role,
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        ) from exc
+    except CannotDemoteLastAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot demote the last active admin",
+        ) from exc

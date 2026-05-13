@@ -1,5 +1,7 @@
 """HashiCorp Vault KV v2 adapter for secret resolution at startup."""
 
+from typing import Any
+
 import hvac  # type: ignore[import-untyped]
 import structlog
 
@@ -28,13 +30,26 @@ class VaultClient:
             The secret value as a plain string.
 
         Raises:
-            RuntimeError: If the path does not exist or the key is absent.
+            RuntimeError: If the path does not exist, the key is absent,
+                or the value is not a non-empty string.
         """
-        response = self._client.secrets.kv.v2.read_secret_version(path=path)
-        data: dict[str, str] = response["data"]["data"]
+        try:
+            response: dict[str, Any] = self._client.secrets.kv.v2.read_secret_version(
+                path=path,
+            )
+            data = response["data"]["data"]
+        except Exception as exc:
+            log.exception("vault.secret_read_failed", path=path, key=key)
+            raise RuntimeError(f"Vault secret path '{path}' could not be read") from exc
+
         if key not in data:
             raise RuntimeError(f"Vault secret '{path}/{key}' not found")
-        return data[key]
+
+        value = data[key]
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"Vault secret '{path}/{key}' is empty or invalid")
+
+        return value
 
     def is_reachable(self) -> bool:
         """Check whether Vault is reachable and the token is authenticated.
@@ -45,4 +60,5 @@ class VaultClient:
         try:
             return bool(self._client.is_authenticated())
         except Exception:
+            log.exception("vault.unreachable")
             return False

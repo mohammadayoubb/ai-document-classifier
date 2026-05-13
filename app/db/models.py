@@ -126,7 +126,13 @@ class Prediction(Base):
 
 
 class AuditLog(Base):
-    """Immutable record of every auditable event (role change, relabel, status change)."""
+    """Immutable record of every auditable event.
+
+    Required audit events:
+    - role changes
+    - prediction relabels
+    - batch status changes
+    """
 
     __tablename__ = "audit_log"
 

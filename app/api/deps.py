@@ -1,100 +1,130 @@
-"""FastAPI dependency injection functions shared across all routes.
+"""API dependency wiring.
 
-All Depends() callables live here. Routes declare what they need; this module
-delivers it. No route body constructs any collaborator directly.
+This file centralizes FastAPI Depends() helpers.
+Routes should receive repositories, services, and current users through these
+dependencies instead of constructing objects inside route functions.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
-import structlog
-from fastapi import Depends, HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.fastapi_users import fastapi_users
 from app.db.session import get_session
+from app.domain.user import UserDomain, UserRole
+from app.repositories.audit_repo import AuditRepository
+from app.repositories.user_repo import UserRepository
+from app.services.audit_service import AuditService
+from app.services.user_service import UserService
 
-log = structlog.get_logger()
+# Create the fastapi-users dependency once at module level.
+# This avoids calling current_user(...) repeatedly inside route signatures.
+_current_active_user = fastapi_users.current_user(active=True)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/jwt/login")
+
+def get_user_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserRepository:
+    """Create a user repository for the current request.
+
+    The repository receives the request-scoped session and performs SQL only.
+    """
+    return UserRepository(session=session)
+
+
+def get_audit_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AuditRepository:
+    """Create an audit repository for the current request.
+
+    AuditRepository performs SQL only for the audit_log table.
+    """
+    return AuditRepository(session=session)
+
+
+def get_audit_service(
+    audit_repo: Annotated[AuditRepository, Depends(get_audit_repository)],
+) -> AuditService:
+    """Create the audit service.
+
+    AuditService delegates SQL work to AuditRepository.
+    """
+    return AuditService(audit_repo=audit_repo)
+
+
+def get_user_service(
+    user_repo: Annotated[UserRepository, Depends(get_user_repository)],
+    audit_service: Annotated[AuditService, Depends(get_audit_service)],
+) -> UserService:
+    """Create the user service.
+
+    UserService owns role-change business rules and audit logging.
+    """
+    return UserService(
+        user_repo=user_repo,
+        audit_service=audit_service,
+    )
 
 
 async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> Any:
-    """Decode JWT and return the authenticated user.
+    current_user: Annotated[object, Depends(_current_active_user)],
+) -> UserDomain:
+    """Return the authenticated user as a domain model.
 
-    Args:
-        token: Bearer token extracted from the Authorization header.
-        session: Injected async database session.
-
-    Returns:
-        The authenticated UserDomain object (resolved in Phase 4).
-
-    Raises:
-        HTTPException: 401 if the token is missing, expired, or invalid.
+    fastapi-users loads the authenticated ORM user from the Bearer JWT.
+    We immediately convert it to UserDomain so route files never expose or
+    return the SQLAlchemy ORM object directly.
     """
-    # TODO: Phase 4 — decode JWT with app.state.jwt_key, load UserDomain from DB
-    raise HTTPException(status_code=401, detail="Authentication not yet implemented")
+    return UserDomain.model_validate(current_user)
 
 
 async def require_admin(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Gate access to admin-only endpoints.
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
+) -> UserDomain:
+    """Require the current user to be an admin.
 
-    Args:
-        user: The authenticated user from get_current_user.
-
-    Returns:
-        The user if they hold the admin role.
-
-    Raises:
-        HTTPException: 403 if the user lacks the admin role.
+    401 is handled by get_current_user when the JWT is missing or invalid.
+    403 is returned here when the user is authenticated but lacks permission.
     """
-    if getattr(user, "role", None) != "admin":
-        raise HTTPException(status_code=403, detail="Admin role required")
-    return user
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+
+    return current_user
 
 
 async def require_reviewer_or_above(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Gate access to reviewer-or-admin endpoints.
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
+) -> UserDomain:
+    """Require reviewer or admin access.
 
-    Args:
-        user: The authenticated user from get_current_user.
-
-    Returns:
-        The user if they hold the reviewer or admin role.
-
-    Raises:
-        HTTPException: 403 if the user lacks the required role.
+    Reviewers and admins can perform review actions.
+    Auditors are read-only and should fail this check.
     """
-    if getattr(user, "role", None) not in ("admin", "reviewer"):
-        raise HTTPException(status_code=403, detail="Reviewer role required")
-    return user
+    if current_user.role not in {UserRole.ADMIN, UserRole.REVIEWER}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Reviewer role required",
+        )
+
+    return current_user
 
 
-def get_queue(request: Request) -> Any:
-    """Return the RQ job queue singleton from application state.
+async def require_admin_or_auditor(
+    current_user: Annotated[UserDomain, Depends(get_current_user)],
+) -> UserDomain:
+    """Require permission to read the audit log.
 
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        The RQ Queue instance stored in app.state.queue (set in lifespan).
+    According to the project roles, admins and auditors can view audit logs.
+    Reviewers cannot.
     """
-    return request.app.state.queue
+    if current_user.role not in {UserRole.ADMIN, UserRole.AUDITOR}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Audit log access required",
+        )
 
-
-def get_classifier(request: Request) -> Any:
-    """Return the loaded ConvNeXt model from application state.
-
-    Args:
-        request: The incoming HTTP request.
-
-    Returns:
-        The PyTorch model stored in app.state.classifier (set in lifespan).
-    """
-    return request.app.state.classifier
+    return current_user
