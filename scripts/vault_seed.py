@@ -57,8 +57,8 @@ def seed_vault() -> None:
 
         # These are stored in Vault so .env can stay limited to Vault token + ports.
         "postgres_password": secrets.token_urlsafe(24),
-        "minio_secret_key": secrets.token_urlsafe(24),
-        "sftp_password": secrets.token_urlsafe(16),
+        "minio_secret_key": "minioadmin",  # matches docker-compose minio MINIO_ROOT_PASSWORD
+        "sftp_password": "password",       # matches docker-compose sftp command: uploader:password:::uploads
     }
 
     client.secrets.kv.v2.create_or_update_secret(

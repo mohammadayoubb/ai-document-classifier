@@ -1,6 +1,7 @@
 # Environment — never committed (see .env.example for the template)
 .env
 .env.*
+!.env.example
 
 # Python
 .venv/

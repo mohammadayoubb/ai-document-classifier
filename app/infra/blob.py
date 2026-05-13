@@ -43,8 +43,15 @@ class BlobStorage:
             data: Raw bytes to store.
             content_type: MIME type — e.g. "image/tiff" or "image/png".
         """
-        # TODO: Phase 8
-        ...
+        stream = io.BytesIO(data)
+        await self._client.put_object(
+            bucket_name=bucket,
+            object_name=key,
+            data=stream,
+            length=len(data),
+            content_type=content_type,
+        )
+        log.info("blob.upload.ok", bucket=bucket, key=key, size_bytes=len(data))
 
     async def download(self, bucket: str, key: str) -> bytes:
         """Download an object from MinIO and return its raw bytes.
@@ -55,9 +62,17 @@ class BlobStorage:
 
         Returns:
             The raw object bytes.
+
+        Raises:
+            Exception: If the object does not exist or MinIO is unreachable.
         """
-        # TODO: Phase 8
-        ...  # type: ignore[return-value]
+        response = await self._client.get_object(bucket_name=bucket, object_name=key)
+        try:
+            data: bytes = await response.read()
+        finally:
+            response.close()
+        log.info("blob.download.ok", bucket=bucket, key=key, size_bytes=len(data))
+        return data
 
     async def get_presigned_url(
         self,
@@ -75,5 +90,9 @@ class BlobStorage:
         Returns:
             A time-limited URL string for direct object download.
         """
-        # TODO: Phase 8
-        ...  # type: ignore[return-value]
+        url: str = await self._client.presigned_get_object(
+            bucket_name=bucket,
+            object_name=key,
+            expires=timedelta(seconds=expires_seconds),
+        )
+        return url

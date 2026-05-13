@@ -21,21 +21,24 @@ class JobQueue:
     def enqueue_inference(
         self,
         batch_id: int,
-        prediction_id: int,
+        filename: str,
         storage_key: str,
         request_id: str,
     ) -> str:
         """Enqueue an inference job for a single document.
 
         The job function is app.workers.inference.run_inference_job.
+        The inference worker creates the Prediction row after classification,
+        so only batch_id and the file location are needed here.
+
         request_id is forwarded so worker logs can be correlated with the
-        originating HTTP request.
+        originating ingest event.
 
         Args:
             batch_id: Primary key of the owning batch.
-            prediction_id: Primary key of the prediction row to update.
+            filename: Original filename (used to create the Prediction row).
             storage_key: MinIO object key for the document to classify.
-            request_id: Propagated from the ingest HTTP request for log correlation.
+            request_id: Propagated from the ingest event for log correlation.
 
         Returns:
             The RQ job ID string.
@@ -43,9 +46,15 @@ class JobQueue:
         job = self._queue.enqueue(
             "app.workers.inference.run_inference_job",
             batch_id,
-            prediction_id,
+            filename,
             storage_key,
             request_id,
             job_timeout=30,
+        )
+        log.info(
+            "queue.job.enqueued",
+            job_id=job.id,
+            batch_id=batch_id,
+            filename=filename,
         )
         return str(job.id)
