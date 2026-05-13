@@ -44,32 +44,3 @@ class UserRepository:
         result = await self._session.execute(stmt)
         return int(result.scalar_one())
 
-    async def create_audit_entry(
-        self,
-        actor_id: int,
-        action: str,
-        target: str,
-        metadata: str | None,
-    ) -> AuditLog:
-        """Insert an immutable audit log row."""
-        entry = AuditLog(
-            actor_id=actor_id,
-            action=action,
-            target=target,
-            metadata_=metadata,
-        )
-        self._session.add(entry)
-        await self._session.flush()
-        await self._session.refresh(entry)
-        return entry
-
-    async def list_audit_log(self, limit: int = 100, offset: int = 0) -> list[AuditLog]:
-        """Return audit log rows ordered by timestamp descending."""
-        stmt = (
-            select(AuditLog)
-            .order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-        result = await self._session.execute(stmt)
-        return list(result.scalars().all())

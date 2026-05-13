@@ -3,17 +3,25 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import redis.asyncio as aioredis
 import structlog
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import audit, users
+from app.api.middleware import RequestIDMiddleware
+from app.api.routes import audit, batches, predictions, users
 from app.auth.backend import auth_backend
 from app.auth.fastapi_users import fastapi_users
 from app.auth.schemas import AuthUserCreate, AuthUserRead
 from app.config import get_settings
 from app.db.session import dispose_engine, init_engine
+from app.infra.cache import CacheAdapter
+from app.infra.casbin_enforcer import verify_policies_loaded
+from app.infra.logging_setup import configure_logging
+from app.infra.queue import JobQueue
 from app.infra.vault import VaultClient
 
+configure_logging()
 log = structlog.get_logger()
 
 
@@ -26,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     1. Resolve secrets from Vault
     2. Verify classifier weights, SHA-256, and quality gate
     3. Verify Casbin policy table is not empty
-    4. Initialise Redis cache with fastapi-cache2
+    4. Initialise Redis cache adapter
     5. Initialise RQ job queue
 
     Args:
@@ -77,11 +85,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # The app must refuse to start if RBAC policies are missing.
     verify_policies_loaded()
 
-    # TODO: Phase 6 — FastAPICache.init(RedisBackend, prefix="docclassifier").
-    # TODO: Phase 8 — JobQueue(settings.redis_url) stored in app.state.queue.
+    # Phase 6 — Redis-backed cache adapter.
+    # CacheAdapter wraps the async Redis client with typed key helpers.
+    # Stored on app.state so get_cache() can inject it per request.
+    redis_client = aioredis.from_url(settings.redis_url)
+    app.state.cache = CacheAdapter(backend=redis_client, prefix="docclassifier")
+
+    # Phase 8 — RQ job queue.
+    # Workers pick up inference jobs enqueued by the ingest poller.
+    app.state.queue = JobQueue(settings.redis_url)
 
     log.info("app.startup.complete")
     yield
+
+    await redis_client.aclose()
     await dispose_engine()
     log.info("app.shutdown.complete")
 
@@ -91,6 +108,15 @@ app = FastAPI(
     title="Document Classifier API",
     version="0.1.0",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(RequestIDMiddleware)
 
 # fastapi-users generated routes.
 # POST /auth/jwt/login returns a JWT access token.
@@ -112,6 +138,8 @@ app.include_router(
 # Route files stay HTTP-only and do not construct the FastAPI app themselves.
 app.include_router(users.router)
 app.include_router(audit.router)
+app.include_router(batches.router)
+app.include_router(predictions.router)
 
 
 @app.get("/health")

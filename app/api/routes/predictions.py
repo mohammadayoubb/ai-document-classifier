@@ -4,37 +4,49 @@ Layer contract: one service call per endpoint, return a domain model.
 No SQLAlchemy imports, no cache operations, no business logic.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_current_user, require_reviewer_or_above
+from app.api.deps import get_current_user, get_prediction_service, require_reviewer_or_above
+from app.domain.prediction import PredictionRead, RecentPredictionsResponse
+from app.domain.user import UserDomain
+from app.services.prediction_service import PredictionService
 
 log = structlog.get_logger()
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 
-@router.get("/recent")
+@router.get("/recent", response_model=RecentPredictionsResponse)
 async def list_recent_predictions(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> list[Any]:
+    user: Annotated[UserDomain, Depends(get_current_user)],
+    service: Annotated[PredictionService, Depends(get_prediction_service)],
+    limit: int = Query(default=20, ge=1, le=100),
+    only_needs_review: bool = Query(default=False),
+) -> RecentPredictionsResponse:
     """List the most recent predictions across all batches.
 
+    Args:
+        user: The authenticated user (any role).
+        service: Injected prediction service.
+        limit: Maximum number of predictions to return (1–100).
+        only_needs_review: When true, return only low-confidence unreviewed items.
+
     Returns:
-        A list of PredictionDomain objects ordered by creation time descending.
+        A recent predictions response ordered by creation time descending.
     """
-# TODO: Phase 6 — cache this endpoint with settings.cache_ttl_recent.
-# Call prediction_service.list_recent() when the service is ready.    return []
+    return await service.list_recent(limit=limit, only_needs_review=only_needs_review)
 
 
-@router.patch("/{pred_id}/relabel")
+@router.patch("/{pred_id}/relabel", response_model=PredictionRead)
 async def relabel_prediction(
     pred_id: int,
     new_label: str,
-    user: Annotated[Any, Depends(require_reviewer_or_above)],
-) -> Any:
+    user: Annotated[UserDomain, Depends(require_reviewer_or_above)],
+    service: Annotated[PredictionService, Depends(get_prediction_service)],
+) -> PredictionRead:
     """Relabel a prediction — reviewer or admin only.
 
     Relabeling is only allowed when the prediction's top-1 confidence is
@@ -42,17 +54,21 @@ async def relabel_prediction(
 
     Args:
         pred_id: Primary key of the prediction to relabel.
-        new_label: The corrected document class label.
+        new_label: The corrected document class label (must be a configured label).
         user: The authenticated reviewer or admin.
+        service: Injected prediction service.
 
     Returns:
-        The updated PredictionDomain object.
+        The updated PredictionRead object.
 
     Raises:
         HTTPException: 403 if caller lacks reviewer role.
         HTTPException: 404 if the prediction does not exist.
-        HTTPException: 422 if confidence >= 0.7 (high-confidence predictions
-            are not eligible for relabeling).
+        HTTPException: 422 if confidence >= 0.7 or label is not a known class.
     """
-    # TODO: Phase 6 — call prediction_service.relabel(pred_id, new_label, user.id)
-    raise HTTPException(status_code=501, detail="Not implemented")
+    try:
+        return await service.relabel(pred_id, new_label, actor_id=user.id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

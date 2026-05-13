@@ -25,7 +25,8 @@ def configure_logging(log_level: str = "INFO") -> None:
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.stdlib.add_logger_name,
+        # add_logger_name is omitted — it requires a stdlib Logger (.name attr),
+        # but we use PrintLoggerFactory which produces a PrintLogger without .name.
     ]
 
     structlog.configure(

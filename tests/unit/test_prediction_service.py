@@ -15,7 +15,7 @@ NOW = datetime(2026, 5, 12, tzinfo=UTC)
 
 def make_settings() -> Settings:
     return Settings(
-        vault_token="root",
+        vault_root_token="root",
         database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/test",
         classifier_labels=["invoice", "form", "email"],
         low_confidence_threshold=0.7,
@@ -179,5 +179,120 @@ def test_worker_prediction_creation_marks_low_confidence_as_review_needed() -> N
         assert repo.create_kwargs is not None
         assert json.loads(str(repo.create_kwargs["top5_labels"])) == ["invoice", "form"]
         assert await cache.get_json(cache.batch_list_key(None, 100, 0)) is None
+
+    asyncio.run(exercise())
+
+
+def test_relabel_raises_lookup_error_for_nonexistent_prediction() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo(make_prediction(confidence=0.3))
+        service = PredictionService(repo, CacheAdapter(prefix="test"), settings=make_settings())
+
+        with pytest.raises(LookupError, match="not found"):
+            await service.relabel(9999, "form", actor_id=7)
+
+    asyncio.run(exercise())
+
+
+def test_relabel_at_exactly_threshold_confidence_is_rejected() -> None:
+    """Confidence equal to the threshold is NOT low-confidence — relabeling is blocked."""
+    async def exercise() -> None:
+        repo = FakePredictionRepo(make_prediction(confidence=0.7))
+        service = PredictionService(repo, CacheAdapter(prefix="test"), settings=make_settings())
+
+        with pytest.raises(ValueError, match="low-confidence"):
+            await service.relabel(1, "form", actor_id=7)
+
+        assert repo.relabel_calls == 0
+
+    asyncio.run(exercise())
+
+
+def test_list_recent_cache_miss_queries_repo_and_populates_cache() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo()
+        cache = CacheAdapter(prefix="test")
+        service = PredictionService(repo, cache, settings=make_settings())
+
+        result = await service.list_recent(limit=5)
+
+        assert repo.list_recent_calls == 1
+        assert result.limit == 5
+        cached = await cache.get_json(cache.recent_predictions_key(5, False))
+        assert cached is not None
+
+    asyncio.run(exercise())
+
+
+def test_list_recent_with_only_needs_review_uses_separate_cache_key() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo()
+        cache = CacheAdapter(prefix="test")
+        service = PredictionService(repo, cache, settings=make_settings())
+
+        await service.list_recent(limit=20, only_needs_review=True)
+
+        # The "review" key should be populated; the "all" key should not
+        assert await cache.get_json(cache.recent_predictions_key(20, True)) is not None
+        assert await cache.get_json(cache.recent_predictions_key(20, False)) is None
+
+    asyncio.run(exercise())
+
+
+def test_update_overlay_key_calls_repo_and_invalidates_caches() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo(make_prediction(confidence=0.4))
+        cache = CacheAdapter(prefix="test")
+        service = PredictionService(repo, cache, settings=make_settings())
+        await cache.set_json(cache.recent_predictions_key(20, False), {"cached": True})
+        await cache.set_json(cache.batch_detail_key(9), {"cached": True})
+
+        result = await service.update_overlay_key(1, "overlays/scan.png")
+
+        assert result.overlay_key == "overlays/scan.png"
+        assert await cache.get_json(cache.recent_predictions_key(20, False)) is None
+        assert await cache.get_json(cache.batch_detail_key(9)) is None
+
+    asyncio.run(exercise())
+
+
+def test_create_prediction_from_worker_raises_when_no_label_or_result_provided() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo()
+        service = PredictionService(repo, CacheAdapter(prefix="test"), settings=make_settings())
+
+        with pytest.raises(ValueError, match="predicted_label and confidence"):
+            await service.create_prediction_from_worker(
+                batch_id=1,
+                filename="doc.tif",
+                storage_key="documents/doc.tif",
+            )
+
+    asyncio.run(exercise())
+
+
+def test_create_prediction_from_worker_accepts_prediction_result_object() -> None:
+    """Service can extract fields from an arbitrary prediction_result object."""
+    from types import SimpleNamespace
+
+    async def exercise() -> None:
+        repo = FakePredictionRepo()
+        cache = CacheAdapter(prefix="test")
+        service = PredictionService(repo, cache, settings=make_settings())
+        prediction_result = SimpleNamespace(
+            label="invoice",
+            confidence=0.65,
+            top5_labels=["invoice", "form"],
+            top5_scores=[0.65, 0.35],
+        )
+
+        result = await service.create_prediction_from_worker(
+            batch_id=9,
+            filename="scan.tif",
+            storage_key="documents/scan.tif",
+            prediction_result=prediction_result,
+        )
+
+        assert result.needs_review is True  # 0.65 < 0.7 threshold
 
     asyncio.run(exercise())

@@ -23,6 +23,7 @@ import asyncio
 import io
 import json
 
+import redis.asyncio as aioredis
 import structlog
 import torch
 from PIL import Image, ImageDraw
@@ -31,7 +32,7 @@ from app.classifier.model import load_and_verify
 from app.classifier.predict import PredictionResult, classify_image
 from app.config import get_settings
 from app.db.models import BatchStatus
-from app.db.session import SessionLocal
+from app.db.session import SessionLocal, init_engine
 from app.infra.blob import BlobStorage
 from app.infra.cache import CacheAdapter
 from app.infra.logging_setup import configure_logging
@@ -99,17 +100,23 @@ async def _async_run_inference(batch_id: int, filename: str, storage_key: str) -
     """
     settings = get_settings()
 
-    # Resolve MinIO secret from Vault each time the worker starts a job.
-    # VaultClient is sync — fast enough that blocking is acceptable here.
+    # Resolve secrets from Vault.  VaultClient is sync — acceptable here.
     vault = VaultClient(addr=settings.vault_addr, token=settings.vault_token)
     minio_secret_key = vault.get_secret("app", "minio_secret_key")
+
+    # Lazily initialise the DB engine on first job in this worker process.
+    # init_engine() is idempotent — subsequent jobs skip it.
+    if not settings.postgres_password:
+        settings.postgres_password = vault.get_secret("app", "postgres_password")
+        init_engine(settings.build_database_url())
 
     blob = BlobStorage(
         endpoint=settings.minio_endpoint,
         access_key=settings.minio_access_key,
         secret_key=minio_secret_key,
     )
-    cache = CacheAdapter()
+    redis_client = aioredis.from_url(settings.redis_url)
+    cache = CacheAdapter(backend=redis_client, prefix="docclassifier")
 
     # 1. Download image from MinIO
     image_bytes = await blob.download("documents", storage_key)
@@ -165,9 +172,12 @@ async def _async_run_inference(batch_id: int, filename: str, storage_key: str) -
     )
 
     # 7. Invalidate caches so API reads reflect the new prediction immediately
-    await cache.invalidate_batches()
-    await cache.invalidate_batch(batch_id)
-    await cache.invalidate_recent_predictions()
+    try:
+        await cache.invalidate_batches()
+        await cache.invalidate_batch(batch_id)
+        await cache.invalidate_recent_predictions()
+    finally:
+        await redis_client.close()
 
 
 async def _async_mark_failed(batch_id: int) -> None:
@@ -177,9 +187,32 @@ async def _async_mark_failed(batch_id: int) -> None:
         await batch_repo.update_status(batch_id, BatchStatus.failed)
         await session.commit()
 
-    cache = CacheAdapter()
-    await cache.invalidate_batch(batch_id)
-    await cache.invalidate_batches()
+    settings = get_settings()
+    redis_client = aioredis.from_url(settings.redis_url)
+    try:
+        cache = CacheAdapter(backend=redis_client, prefix="docclassifier")
+        await cache.invalidate_batch(batch_id)
+        await cache.invalidate_batches()
+    finally:
+        await redis_client.close()
+
+
+async def _async_job_with_cleanup(batch_id: int, filename: str, storage_key: str) -> None:
+    """Run inference; on failure mark the batch and re-raise — all in one event loop.
+
+    Using a single asyncio.run() wrapper avoids the 'Future attached to a different
+    loop' error that would occur if _async_mark_failed were called via a second
+    asyncio.run() after the first loop is closed.
+    """
+    try:
+        await _async_run_inference(batch_id, filename, storage_key)
+    except Exception as exc:
+        log.exception("inference.job.failed", batch_id=batch_id, error=str(exc))
+        try:
+            await _async_mark_failed(batch_id)
+        except Exception as mark_exc:
+            log.exception("inference.mark_failed.error", batch_id=batch_id, error=str(mark_exc))
+        raise
 
 
 def run_inference_job(
@@ -191,7 +224,7 @@ def run_inference_job(
     """Classify one document and persist the results.
 
     This is the RQ job entry point — synchronous because RQ executes jobs
-    in threads. Delegates to _async_run_inference via asyncio.run().
+    in threads. Delegates to _async_job_with_cleanup via asyncio.run().
 
     p95 latency targets:
     - Inference step: < 1.0s (CPU, ConvNeXt Tiny)
@@ -211,10 +244,4 @@ def run_inference_job(
         filename=filename,
         storage_key=storage_key,
     )
-
-    try:
-        asyncio.run(_async_run_inference(batch_id, filename, storage_key))
-    except Exception as exc:
-        log.exception("inference.job.failed", batch_id=batch_id, error=str(exc))
-        asyncio.run(_async_mark_failed(batch_id))
-        raise  # re-raise so RQ marks the job as failed
+    asyncio.run(_async_job_with_cleanup(batch_id, filename, storage_key))

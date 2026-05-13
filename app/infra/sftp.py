@@ -1,5 +1,6 @@
 """SFTP polling adapter for the document ingest worker."""
 
+import errno
 import io
 import stat
 
@@ -142,4 +143,10 @@ class SftpAdapter:
         try:
             self._sftp.mkdir(path)
         except OSError:
-            pass  # directory already exists
+            # Verify the directory exists — some SFTP servers return a generic
+            # SSH_FX_FAILURE (errno=None) instead of SSH_FX_FILE_ALREADY_EXISTS,
+            # so we can't rely on errno alone.
+            try:
+                self._sftp.stat(path)
+            except OSError:
+                raise  # directory does not exist; propagate the real error

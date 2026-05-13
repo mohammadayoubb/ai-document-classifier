@@ -47,6 +47,7 @@ from app.infra.logging_setup import configure_logging
 from app.infra.queue import JobQueue
 from app.infra.sftp import SftpAdapter
 from app.infra.vault import VaultClient
+from app.db.session import init_engine
 from app.repositories.batch_repo import BatchRepository
 
 log = structlog.get_logger()
@@ -230,6 +231,8 @@ async def run_ingest_loop() -> None:
         raise RuntimeError("Vault is unreachable — ingest worker refusing to start")
     sftp_password = vault.get_secret("app", "sftp_password")
     minio_secret_key = vault.get_secret("app", "minio_secret_key")
+    settings.postgres_password = vault.get_secret("app", "postgres_password")
+    init_engine(settings.build_database_url())
 
     sftp = SftpAdapter(
         host=settings.sftp_host,

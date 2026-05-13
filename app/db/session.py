@@ -56,6 +56,15 @@ async def dispose_engine() -> None:
     _session_factory = None
 
 
+def SessionLocal() -> AsyncSession:
+    """Return a new async session for use by worker code (not FastAPI routes).
+
+    Workers call ``async with SessionLocal() as session:`` instead of using
+    FastAPI's Depends(get_session) because they run outside the request cycle.
+    """
+    return get_sessionmaker()()
+
+
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async session for use as a FastAPI Depends() dependency.
 

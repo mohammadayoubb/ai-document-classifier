@@ -17,11 +17,8 @@ os.environ.setdefault(
     "postgresql+asyncpg://postgres:postgres@localhost:5432/docclassifier_test",
 )
 
-# Settings requires VAULT_TOKEN because the real app resolves secrets from Vault.
-# Unit tests do not contact Vault unless they explicitly test Vault integration.
-os.environ.setdefault("VAULT_TOKEN", "test-token")
-
-# Some scripts/configs may read the dev-mode root token name.
+# Settings.vault_token accepts VAULT_ROOT_TOKEN via AliasChoices. We only set
+# one alias here to avoid the extra="forbid" conflict when both aliases appear.
 os.environ.setdefault("VAULT_ROOT_TOKEN", "test-token")
 
 # Use localhost in tests unless an integration test overrides it.

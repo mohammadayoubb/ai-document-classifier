@@ -20,7 +20,8 @@ import secrets
 import hvac  # type: ignore[import-untyped]
 
 VAULT_ADDR = os.environ.get("VAULT_ADDR", "http://localhost:8200")
-VAULT_TOKEN = os.environ.get("VAULT_ROOT_TOKEN", "root")
+# Accept either name: docker-compose injects VAULT_TOKEN; local dev uses VAULT_ROOT_TOKEN.
+VAULT_TOKEN = os.environ.get("VAULT_TOKEN") or os.environ.get("VAULT_ROOT_TOKEN") or "root"
 
 
 def seed_vault() -> None:
@@ -55,8 +56,9 @@ def seed_vault() -> None:
         # JWT signing key must never be hardcoded in source code.
         "jwt_signing_key": secrets.token_hex(32),
 
-        # These are stored in Vault so .env can stay limited to Vault token + ports.
-        "postgres_password": secrets.token_urlsafe(24),
+        # postgres_password must match POSTGRES_PASSWORD in .env (db container init value).
+        # In dev mode both are "postgres"; change both together if you rotate this.
+        "postgres_password": "postgres",
         "minio_secret_key": "minioadmin",  # matches docker-compose minio MINIO_ROOT_PASSWORD
         "sftp_password": "password",       # matches docker-compose sftp command: uploader:password:::uploads
     }

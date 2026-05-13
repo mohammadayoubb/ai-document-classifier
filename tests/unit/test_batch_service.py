@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import pytest
+
 from app.config import Settings
 from app.domain.batch import BatchStatus, PaginatedBatchSummary
 from app.infra.cache import CacheAdapter
@@ -14,7 +16,7 @@ NOW = datetime(2026, 5, 12, tzinfo=UTC)
 
 def make_settings() -> Settings:
     return Settings(
-        vault_token="root",
+        vault_root_token="root",
         database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/test",
         low_confidence_threshold=0.7,
         cache_ttl_batches=60,
@@ -166,5 +168,107 @@ def test_status_update_invalidates_list_and_detail_caches() -> None:
         assert updated.status == BatchStatus.completed
         assert await cache.get_json(cache.batch_list_key(None, 100, 0)) is None
         assert await cache.get_json(cache.batch_detail_key(1)) is None
+
+    asyncio.run(exercise())
+
+
+def test_create_batch_returns_domain_and_invalidates_list_cache() -> None:
+    async def exercise() -> None:
+        repo = FakeBatchRepo()
+        cache = CacheAdapter(prefix="test")
+        service = BatchService(repo, cache, settings=make_settings())
+        await cache.set_json(
+            cache.batch_list_key(None, 100, 0),
+            {"items": [], "total": 0, "limit": 100, "offset": 0},
+        )
+
+        result = await service.create_batch(owner_id=1)
+
+        assert result.id == 2
+        assert result.status == BatchStatus.pending
+        assert await cache.get_json(cache.batch_list_key(None, 100, 0)) is None
+
+    asyncio.run(exercise())
+
+
+def test_list_batches_clamps_limit_above_500() -> None:
+    async def exercise() -> None:
+        repo = FakeBatchRepo()
+        cache = CacheAdapter(prefix="test")
+        service = BatchService(repo, cache, settings=make_settings())
+
+        result = await service.list_batches(limit=9999)
+
+        assert result.limit == 500
+
+    asyncio.run(exercise())
+
+
+def test_list_batches_clamps_limit_below_one_to_one() -> None:
+    async def exercise() -> None:
+        repo = FakeBatchRepo()
+        cache = CacheAdapter(prefix="test")
+        service = BatchService(repo, cache, settings=make_settings())
+
+        result = await service.list_batches(limit=0)
+
+        assert result.limit == 1
+
+    asyncio.run(exercise())
+
+
+def test_list_batches_normalizes_negative_offset_to_zero() -> None:
+    async def exercise() -> None:
+        repo = FakeBatchRepo()
+        cache = CacheAdapter(prefix="test")
+        service = BatchService(repo, cache, settings=make_settings())
+
+        result = await service.list_batches(limit=10, offset=-10)
+
+        assert result.offset == 0
+
+    asyncio.run(exercise())
+
+
+def test_update_status_raises_lookup_error_when_batch_not_found() -> None:
+    class MissingBatchRepo(FakeBatchRepo):
+        async def update_status(  # type: ignore[override]
+            self,
+            batch_id: int,
+            status: object,
+        ) -> None:
+            return None
+
+    async def exercise() -> None:
+        service = BatchService(
+            MissingBatchRepo(),
+            CacheAdapter(prefix="test"),
+            settings=make_settings(),
+        )
+
+        with pytest.raises(LookupError, match="not found"):
+            await service.update_status(999, BatchStatus.completed)
+
+    asyncio.run(exercise())
+
+
+def test_get_batch_detail_returns_none_when_batch_not_found() -> None:
+    class EmptyRepo(FakeBatchRepo):
+        async def get_detail(  # type: ignore[override]
+            self,
+            batch_id: int,
+        ) -> None:
+            return None
+
+    async def exercise() -> None:
+        service = BatchService(
+            EmptyRepo(),
+            CacheAdapter(prefix="test"),
+            settings=make_settings(),
+        )
+
+        result = await service.get_batch_detail(9999)
+
+        assert result is None
 
     asyncio.run(exercise())

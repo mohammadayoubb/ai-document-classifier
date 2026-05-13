@@ -47,7 +47,9 @@ def get_enforcer() -> casbin.Enforcer:
 
     if _enforcer is None:
         settings = get_settings()
-        sync_database_url = _get_sync_database_url(settings.database_url)
+        # settings.database_url is None when the URL was built from Vault components;
+        # build_database_url() assembles the URL from resolved parts regardless.
+        sync_database_url = _get_sync_database_url(settings.build_database_url())
 
         # The adapter stores policies in the casbin_rule table.
         adapter = Adapter(sync_database_url)

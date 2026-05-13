@@ -1,50 +1,67 @@
-"""Batch listing routes.
+"""Batch listing and detail routes.
 
 Layer contract: one service call per endpoint, return a domain model.
 No SQLAlchemy imports, no cache operations, no business logic.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_current_user
+from app.api.deps import get_batch_service, get_current_user
+from app.domain.batch import BatchDetail, BatchStatus, PaginatedBatchSummary
+from app.domain.user import UserDomain
+from app.services.batch_service import BatchService
 
 log = structlog.get_logger()
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
 
-@router.get("")
+@router.get("", response_model=PaginatedBatchSummary)
 async def list_batches(
-    user: Annotated[Any, Depends(get_current_user)],
-) -> list[Any]:
+    user: Annotated[UserDomain, Depends(get_current_user)],
+    service: Annotated[BatchService, Depends(get_batch_service)],
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    status: BatchStatus | None = Query(default=None),
+) -> PaginatedBatchSummary:
     """List all batches visible to the authenticated user.
 
+    Args:
+        user: The authenticated user (any role).
+        service: Injected batch service.
+        limit: Maximum number of batches to return (1–500).
+        offset: Number of batches to skip for pagination.
+        status: Optional filter by batch lifecycle status.
+
     Returns:
-        A list of BatchDomain objects ordered by creation time descending.
+        A paginated list of batch summaries ordered by creation time descending.
     """
-    # TODO: Phase 6 — @cache(expire=settings.cache_ttl_batches), call batch_service.list_all()
-    return []
+    return await service.list_batches(limit=limit, offset=offset, status=status)
 
 
-@router.get("/{batch_id}")
+@router.get("/{batch_id}", response_model=BatchDetail)
 async def get_batch(
     batch_id: int,
-    user: Annotated[Any, Depends(get_current_user)],
-) -> Any:
-    """Return a single batch by primary key.
+    user: Annotated[UserDomain, Depends(get_current_user)],
+    service: Annotated[BatchService, Depends(get_batch_service)],
+) -> BatchDetail:
+    """Return a single batch with its full prediction list.
 
     Args:
         batch_id: The batch primary key.
         user: The authenticated user (any role).
+        service: Injected batch service.
 
     Returns:
-        A BatchDomain object.
+        A BatchDetail object containing all predictions for that batch.
 
     Raises:
         HTTPException: 404 if no batch with that ID exists.
     """
-    # TODO: Phase 6 — @cache(expire=settings.cache_ttl_batch), call batch_service.get_by_id()
-    raise HTTPException(status_code=404, detail="Not implemented")
+    detail = await service.get_batch_detail(batch_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return detail

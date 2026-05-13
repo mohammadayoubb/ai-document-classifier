@@ -17,121 +17,102 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-batch_status = sa.Enum(
-    "pending",
-    "running",
-    "completed",
-    "failed",
-    name="batchstatus",
-)
-
 
 def upgrade() -> None:
-    """Create the current application tables."""
-    batch_status.create(op.get_bind(), checkfirst=True)
+    """Create the current application tables.
 
-    op.create_table(
-        "users",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("email", sa.String(length=320), nullable=False),
-        sa.Column("hashed_password", sa.String(length=255), nullable=False),
-        sa.Column("role", sa.String(length=64), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)
+    All DDL uses IF NOT EXISTS / DO...EXCEPTION so that a partial previous run
+    (where the enum or some tables were created but alembic_version was not
+    stamped) does not block a clean re-run.
+    """
+    # Enum type — PostgreSQL DO...EXCEPTION is the only reliable way to
+    # create a type idempotently; CREATE TYPE lacks IF NOT EXISTS before PG 9.1,
+    # and SQLAlchemy's create_type=False flag can be lost when the type object
+    # is copied internally during op.create_table.
+    op.execute(sa.text(
+        "DO $$ BEGIN "
+        "  CREATE TYPE batchstatus AS ENUM ('pending', 'running', 'completed', 'failed'); "
+        "EXCEPTION WHEN duplicate_object THEN NULL; "
+        "END $$;"
+    ))
 
-    op.create_table(
-        "batches",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("owner_id", sa.Integer(), nullable=False),
-        sa.Column("status", batch_status, nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["owner_id"], ["users.id"]),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id          SERIAL          PRIMARY KEY,
+            email       VARCHAR(320)    NOT NULL,
+            hashed_password VARCHAR(255) NOT NULL,
+            role        VARCHAR(64)     NOT NULL,
+            is_active   BOOLEAN         NOT NULL,
+            created_at  TIMESTAMPTZ     NOT NULL DEFAULT now()
+        )
+    """))
+    op.execute(sa.text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"
+    ))
 
-    op.create_table(
-        "audit_log",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("actor_id", sa.Integer(), nullable=False),
-        sa.Column("action", sa.String(length=128), nullable=False),
-        sa.Column("target", sa.String(length=255), nullable=False),
-        sa.Column("metadata", sa.Text(), nullable=True),
-        sa.Column(
-            "timestamp",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["actor_id"], ["users.id"]),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS batches (
+            id          SERIAL          PRIMARY KEY,
+            owner_id    INTEGER         NOT NULL REFERENCES users(id),
+            status      batchstatus     NOT NULL,
+            created_at  TIMESTAMPTZ     NOT NULL DEFAULT now(),
+            updated_at  TIMESTAMPTZ     NOT NULL DEFAULT now()
+        )
+    """))
 
-    op.create_table(
-        "casbin_rule",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("ptype", sa.String(length=255), nullable=True),
-        sa.Column("v0", sa.String(length=255), nullable=True),
-        sa.Column("v1", sa.String(length=255), nullable=True),
-        sa.Column("v2", sa.String(length=255), nullable=True),
-        sa.Column("v3", sa.String(length=255), nullable=True),
-        sa.Column("v4", sa.String(length=255), nullable=True),
-        sa.Column("v5", sa.String(length=255), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id          SERIAL          PRIMARY KEY,
+            actor_id    INTEGER         NOT NULL REFERENCES users(id),
+            action      VARCHAR(128)    NOT NULL,
+            target      VARCHAR(255)    NOT NULL,
+            metadata    TEXT,
+            timestamp   TIMESTAMPTZ     NOT NULL DEFAULT now()
+        )
+    """))
 
-    op.create_table(
-        "predictions",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("batch_id", sa.Integer(), nullable=False),
-        sa.Column("filename", sa.String(length=255), nullable=False),
-        sa.Column("storage_key", sa.String(length=1024), nullable=False),
-        sa.Column("overlay_key", sa.String(length=1024), nullable=True),
-        sa.Column("predicted_label", sa.String(length=128), nullable=False),
-        sa.Column("confidence", sa.Float(), nullable=False),
-        sa.Column("top5_labels", sa.Text(), nullable=False),
-        sa.Column("top5_scores", sa.Text(), nullable=False),
-        sa.Column("is_relabeled", sa.Boolean(), nullable=False),
-        sa.Column("relabeled_to", sa.String(length=128), nullable=True),
-        sa.Column("relabeled_by", sa.Integer(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["batch_id"], ["batches.id"]),
-        sa.ForeignKeyConstraint(["relabeled_by"], ["users.id"]),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_predictions_batch_id"), "predictions", ["batch_id"], unique=False)
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS casbin_rule (
+            id      SERIAL          PRIMARY KEY,
+            ptype   VARCHAR(255),
+            v0      VARCHAR(255),
+            v1      VARCHAR(255),
+            v2      VARCHAR(255),
+            v3      VARCHAR(255),
+            v4      VARCHAR(255),
+            v5      VARCHAR(255)
+        )
+    """))
+
+    op.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id              SERIAL          PRIMARY KEY,
+            batch_id        INTEGER         NOT NULL REFERENCES batches(id),
+            filename        VARCHAR(255)    NOT NULL,
+            storage_key     VARCHAR(1024)   NOT NULL,
+            overlay_key     VARCHAR(1024),
+            predicted_label VARCHAR(128)    NOT NULL,
+            confidence      DOUBLE PRECISION NOT NULL,
+            top5_labels     TEXT            NOT NULL,
+            top5_scores     TEXT            NOT NULL,
+            is_relabeled    BOOLEAN         NOT NULL,
+            relabeled_to    VARCHAR(128),
+            relabeled_by    INTEGER         REFERENCES users(id),
+            created_at      TIMESTAMPTZ     NOT NULL DEFAULT now()
+        )
+    """))
+    op.execute(sa.text(
+        "CREATE INDEX IF NOT EXISTS ix_predictions_batch_id ON predictions (batch_id)"
+    ))
 
 
 def downgrade() -> None:
     """Drop the initial application tables."""
-    op.drop_index(op.f("ix_predictions_batch_id"), table_name="predictions")
-    op.drop_table("predictions")
-    op.drop_table("casbin_rule")
-    op.drop_table("audit_log")
-    op.drop_table("batches")
-    op.drop_index(op.f("ix_users_email"), table_name="users")
-    op.drop_table("users")
-    batch_status.drop(op.get_bind(), checkfirst=True)
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_predictions_batch_id"))
+    op.execute(sa.text("DROP TABLE IF EXISTS predictions"))
+    op.execute(sa.text("DROP TABLE IF EXISTS casbin_rule"))
+    op.execute(sa.text("DROP TABLE IF EXISTS audit_log"))
+    op.execute(sa.text("DROP TABLE IF EXISTS batches"))
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_users_email"))
+    op.execute(sa.text("DROP TABLE IF EXISTS users"))
+    op.execute(sa.text("DROP TYPE IF EXISTS batchstatus"))

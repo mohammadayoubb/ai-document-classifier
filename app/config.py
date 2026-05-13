@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # Resolved at runtime from Vault — empty default, overridden in lifespan
     jwt_signing_key: str = ""
+    jwt_lifetime_seconds: int = 3600  # 60 minutes per architecture spec
 
     # Database connection. DATABASE_URL is intentionally a local/test override;
     # production composes the URL after Vault has resolved postgres_password.
