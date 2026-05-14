@@ -22,6 +22,15 @@ from app.services.user_service import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+@router.get("", response_model=list[UserDomain])
+async def list_users(
+    current_user: Annotated[UserDomain, Depends(require_admin)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> list[UserDomain]:
+    """Return all registered users. Admin only."""
+    return await user_service.list_users()
+
+
 @router.get("/me", response_model=UserDomain)
 async def get_me(
     current_user: Annotated[UserDomain, Depends(get_current_user)],

@@ -35,6 +35,12 @@ class UserRepository:
         await self._session.refresh(user)
         return user
 
+    async def list_all(self) -> list[User]:
+        """Return all users ordered by creation date."""
+        stmt = select(User).order_by(User.id)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def count_by_role(self, role: str) -> int:
         """Count active users holding a specific role."""
         stmt = select(func.count(User.id)).where(

@@ -35,6 +35,11 @@ class UserService:
         self._user_repo = user_repo
         self._audit_service = audit_service
 
+    async def list_users(self) -> list[UserDomain]:
+        """Return all registered users."""
+        users = await self._user_repo.list_all()
+        return [UserDomain.model_validate(u) for u in users]
+
     async def get_user_by_id(self, user_id: int) -> UserDomain:
         """Return a user by ID.
 

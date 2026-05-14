@@ -133,6 +133,10 @@ export async function getCurrentUser(): Promise<User> {
   return request<User>("/users/me");
 }
 
+export async function getUsers(): Promise<User[]> {
+  return request<User[]>("/users");
+}
+
 export async function updateUserRole(
   userId: string,
   newRole: string,

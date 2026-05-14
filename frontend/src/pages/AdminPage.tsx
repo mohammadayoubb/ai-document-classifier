@@ -3,13 +3,14 @@ import {
   CheckCircle2,
   ClipboardList,
   Loader2,
+  RefreshCw,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getAuditLog, updateUserRole } from "../api/client";
+import { getAuditLog, getUsers, updateUserRole } from "../api/client";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
-import type { AuditEntry, UserRole } from "../types";
+import type { AuditEntry, User, UserRole } from "../types";
 
 type Tab = "users" | "audit";
 
@@ -23,114 +24,150 @@ function formatDateTime(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Role Update Form
+// Role badge
 // ---------------------------------------------------------------------------
 
-function RoleUpdateForm() {
+const ROLE_COLORS: Record<UserRole, string> = {
+  admin: "bg-purple-50 text-purple-700 border-purple-100",
+  reviewer: "bg-indigo-50 text-indigo-700 border-indigo-100",
+  auditor: "bg-gray-50 text-gray-600 border-gray-200",
+};
+
+// ---------------------------------------------------------------------------
+// Users table
+// ---------------------------------------------------------------------------
+
+function UsersPanel() {
   const { user: currentUser, refreshUser } = useAuth();
-
-  const [targetId, setTargetId] = useState("");
-  const [newRole, setNewRole] = useState<UserRole>("reviewer");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [successId, setSuccessId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<Record<string, string>>({});
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const fetchUsers = useCallback(async () => {
+    setIsLoading(true);
     setError(null);
-    setSuccessMsg(null);
-    if (!targetId.trim()) {
-      setError("User ID is required.");
-      return;
-    }
-    setIsSubmitting(true);
     try {
-      const updated = await updateUserRole(targetId.trim(), newRole);
-      setSuccessMsg(
-        `Role updated: ${updated.email ?? updated.id} is now ${updated.role}.`,
-      );
-      setTargetId("");
-      // If the admin just changed their own role, refresh current user
-      if (currentUser && updated.id === currentUser.id) {
-        await refreshUser();
-      }
+      setUsers(await getUsers());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update role.");
+      setError(err instanceof Error ? err.message : "Failed to load users.");
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchUsers(); }, [fetchUsers]);
+
+  async function handleRoleChange(user: User, newRole: UserRole) {
+    setSavingId(user.id);
+    setSuccessId(null);
+    setRowError((prev) => ({ ...prev, [user.id]: "" }));
+    try {
+      const updated = await updateUserRole(user.id, newRole);
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setSuccessId(user.id);
+      setTimeout(() => setSuccessId(null), 2000);
+      if (currentUser && updated.id === currentUser.id) await refreshUser();
+    } catch (err) {
+      setRowError((prev) => ({
+        ...prev,
+        [user.id]: err instanceof Error ? err.message : "Failed.",
+      }));
+    } finally {
+      setSavingId(null);
     }
   }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-700">Update User Role</h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Enter a user ID and select a new role. Role changes take effect on the user's
-          next request.
-        </p>
-      </div>
-
-      <div className="px-5 py-4 space-y-4">
-        {error && (
-          <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            {error}
-          </div>
-        )}
-        {successMsg && (
-          <div className="flex items-start gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
-            <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-            {successMsg}
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => void handleSubmit(e)}
-          className="flex flex-col sm:flex-row gap-3"
-        >
-          <input
-            type="text"
-            placeholder="User ID (UUID)"
-            value={targetId}
-            onChange={(e) => setTargetId(e.target.value)}
-            className="flex-1 px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder-gray-400 font-mono"
-          />
-          <select
-            value={newRole}
-            onChange={(e) => setNewRole(e.target.value as UserRole)}
-            className="px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700 capitalize"
-          >
-            {ROLE_OPTIONS.map((r) => (
-              <option key={r} value={r} className="capitalize">
-                {r}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-          >
-            {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Update Role
-          </button>
-        </form>
-      </div>
-
-      {/* Current user info */}
-      {currentUser && (
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
-          <p className="text-xs text-gray-500">
-            Logged in as{" "}
-            <span className="font-semibold text-gray-700">{currentUser.email}</span>{" "}
-            &middot; role:{" "}
-            <span className="font-semibold text-indigo-600 capitalize">
-              {currentUser.role}
-            </span>{" "}
-            &middot; ID:{" "}
-            <span className="font-mono text-gray-500">{currentUser.id}</span>
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">Users</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Select a role from the dropdown to update it instantly.
           </p>
+        </div>
+        <button
+          onClick={() => void fetchUsers()}
+          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Refresh
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12 gap-2 text-gray-400">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+          Loading…
+        </div>
+      ) : error ? (
+        <div className="px-5 py-4 text-sm text-red-700 bg-red-50 border-t border-red-100">
+          {error}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">#</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Email</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Current Role</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Change Role</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Joined</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {users.map((u) => (
+                <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-5 py-3 font-mono text-xs text-gray-400">{u.id}</td>
+                  <td className="px-5 py-3 text-gray-800 font-medium">
+                    {u.email}
+                    {currentUser?.id === u.id && (
+                      <span className="ml-2 text-xs text-indigo-400 font-normal">(you)</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    <span className={`inline-block text-xs font-semibold border px-2 py-0.5 rounded-full capitalize ${ROLE_COLORS[u.role]}`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <select
+                        defaultValue={u.role}
+                        disabled={savingId === u.id}
+                        onChange={(e) => void handleRoleChange(u, e.target.value as UserRole)}
+                        className="px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700 capitalize disabled:opacity-50"
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      {savingId === u.id && <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />}
+                      {successId === u.id && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                    </div>
+                    {rowError[u.id] && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />{rowError[u.id]}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-gray-500 whitespace-nowrap">
+                    {formatDateTime(u.created_at)}
+                  </td>
+                  <td className="px-5 py-3">
+                    <span className={`inline-block text-xs font-semibold border px-2 py-0.5 rounded-full ${u.is_active ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-100 text-gray-400 border-gray-200"}`}>
+                      {u.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -295,7 +332,7 @@ export default function AdminPage() {
           </div>
 
           {/* Tab content */}
-          {activeTab === "users" && <RoleUpdateForm />}
+          {activeTab === "users" && <UsersPanel />}
           {activeTab === "audit" && <AuditLogPanel />}
         </div>
       </main>
