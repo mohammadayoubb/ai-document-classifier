@@ -47,8 +47,8 @@ export interface BatchDetail extends Batch {
 }
 
 export interface AuditEntry {
-  id: string;
-  actor_id: string;
+  id: number;
+  actor_id: number;
   action: string;
   target: string;
   metadata_: Record<string, unknown> | null;

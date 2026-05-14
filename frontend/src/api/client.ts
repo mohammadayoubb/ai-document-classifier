@@ -148,6 +148,26 @@ export async function updateUserRole(
 // Batches
 // ---------------------------------------------------------------------------
 
+export async function uploadDocument(file: File): Promise<Batch> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${BASE_URL}/batches/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { detail?: string };
+      if (body.detail) message = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch { /* ignore */ }
+    throw new ApiError(response.status, message);
+  }
+  return response.json() as Promise<Batch>;
+}
+
 export async function getBatches(
   limit = 20,
   offset = 0,

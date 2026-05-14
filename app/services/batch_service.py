@@ -1,10 +1,16 @@
 """Batch business logic — creation, listing, detail, and cache invalidation."""
 
+import io
+import uuid
 from typing import Any, cast
+
+from PIL import Image
 
 from app.config import Settings, get_settings
 from app.domain.batch import BatchDetail, BatchDomain, BatchStatus, PaginatedBatchSummary
 from app.services.mappers import batch_to_domain, batch_to_summary, prediction_to_read
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class BatchService:
@@ -19,6 +25,38 @@ class BatchService:
         self._repo = repo
         self._cache = cache
         self._settings = settings or get_settings()
+
+    async def create_batch_from_upload(
+        self,
+        data: bytes,
+        filename: str,
+        owner_id: int,
+        blob: Any,
+        queue: Any,
+    ) -> BatchDomain:
+        """Validate, store, and enqueue an image uploaded directly via the API.
+
+        Raises:
+            ValueError: If the file is empty, too large, or not a valid image.
+        """
+        if len(data) == 0:
+            raise ValueError("File is empty.")
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise ValueError("File exceeds the 50 MB limit.")
+        try:
+            Image.open(io.BytesIO(data)).verify()
+        except Exception as exc:
+            raise ValueError("File is not a valid image.") from exc
+
+        request_id = str(uuid.uuid4())
+        storage_key = f"documents/{request_id}_{filename}"
+        await blob.upload("documents", storage_key, data, "image/tiff")
+
+        batch = await self._repo.create(owner_id=owner_id, status=BatchStatus.pending)
+        await self._cache.invalidate_batches()
+
+        queue.enqueue_inference(batch.id, filename, storage_key, request_id)
+        return batch_to_domain(batch)
 
     async def create_batch(self, owner_id: int) -> BatchDomain:
         """Create a new pending batch and invalidate cached batch lists."""

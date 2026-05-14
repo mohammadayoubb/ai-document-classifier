@@ -15,6 +15,7 @@ from app.auth.fastapi_users import fastapi_users
 from app.auth.schemas import AuthUserCreate, AuthUserRead
 from app.config import get_settings
 from app.db.session import dispose_engine, init_engine
+from app.infra.blob import BlobStorage
 from app.infra.cache import CacheAdapter
 from app.infra.casbin_enforcer import verify_policies_loaded
 from app.infra.logging_setup import configure_logging
@@ -94,6 +95,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Phase 8 — RQ job queue.
     # Workers pick up inference jobs enqueued by the ingest poller.
     app.state.queue = JobQueue(settings.redis_url)
+
+    # Blob storage — shared instance for the upload endpoint.
+    app.state.blob = BlobStorage(
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+    )
 
     log.info("app.startup.complete")
     yield

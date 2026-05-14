@@ -187,8 +187,13 @@ async def _process_file(
 
     log.info("ingest.job.enqueued", batch_id=batch_id, job_id=job_id)
 
-    # 6. Move to processed/ on SFTP
-    await asyncio.to_thread(sftp.move_to_processed, filename)
+    # 6. Move to processed/ on SFTP — failure here is non-fatal; the job is
+    # already enqueued so we log and continue rather than leaving the file to
+    # be re-picked-up on the next poll.
+    try:
+        await asyncio.to_thread(sftp.move_to_processed, filename)
+    except Exception as exc:
+        log.error("ingest.error.sftp_move", filename=filename, error=str(exc))
 
     structlog.contextvars.unbind_contextvars("request_id", "filename")
 

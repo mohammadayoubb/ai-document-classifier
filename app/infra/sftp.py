@@ -112,16 +112,21 @@ class SftpAdapter:
     def move_to_processed(self, filename: str) -> None:
         """Move a successfully ingested file from uploads/ to processed/.
 
-        Creates the processed/ directory if it does not exist.
+        Falls back to deletion if the SFTP server does not allow subdirectory
+        creation (e.g. atmoz/sftp with a volume-mounted uploads/ directory).
 
         Args:
             filename: Filename to move.
         """
         if self._sftp is None:
             raise RuntimeError("SFTP not connected — call connect() first")
-        self._ensure_dir("uploads/processed")
-        self._sftp.rename(f"uploads/{filename}", f"uploads/processed/{filename}")
-        log.info("sftp.file.processed", filename=filename)
+        try:
+            self._ensure_dir("uploads/processed")
+            self._sftp.rename(f"uploads/{filename}", f"uploads/processed/{filename}")
+            log.info("sftp.file.processed", filename=filename)
+        except Exception:
+            self._sftp.remove(f"uploads/{filename}")
+            log.info("sftp.file.deleted", filename=filename)
 
     def move_to_quarantine(self, filename: str) -> None:
         """Move a malformed file from uploads/ to quarantine/.

@@ -9,10 +9,16 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from pydantic import BaseModel
+
 from app.api.deps import get_current_user, get_prediction_service, require_reviewer_or_above
 from app.domain.prediction import PredictionRead, RecentPredictionsResponse
 from app.domain.user import UserDomain
 from app.services.prediction_service import PredictionService
+
+
+class RelabelRequest(BaseModel):
+    new_label: str
 
 log = structlog.get_logger()
 
@@ -43,7 +49,7 @@ async def list_recent_predictions(
 @router.patch("/{pred_id}/relabel", response_model=PredictionRead)
 async def relabel_prediction(
     pred_id: int,
-    new_label: str,
+    body: RelabelRequest,
     user: Annotated[UserDomain, Depends(require_reviewer_or_above)],
     service: Annotated[PredictionService, Depends(get_prediction_service)],
 ) -> PredictionRead:
@@ -54,7 +60,7 @@ async def relabel_prediction(
 
     Args:
         pred_id: Primary key of the prediction to relabel.
-        new_label: The corrected document class label (must be a configured label).
+        body: Request body containing the corrected document class label.
         user: The authenticated reviewer or admin.
         service: Injected prediction service.
 
@@ -67,7 +73,7 @@ async def relabel_prediction(
         HTTPException: 422 if confidence >= 0.7 or label is not a known class.
     """
     try:
-        return await service.relabel(pred_id, new_label, actor_id=user.id)
+        return await service.relabel(pred_id, body.new_label, actor_id=user.id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

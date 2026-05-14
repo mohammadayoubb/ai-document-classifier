@@ -217,7 +217,7 @@ function AuditLogPanel() {
                     {formatDateTime(entry.timestamp)}
                   </td>
                   <td className="px-5 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">
-                    {entry.actor_id.slice(0, 8)}…
+                    {String(entry.actor_id)}
                   </td>
                   <td className="px-5 py-3">
                     <span className="inline-block text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full">
