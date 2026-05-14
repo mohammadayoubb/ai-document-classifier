@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 from app.config import Settings, get_settings
+from app.domain.audit import AuditAction
 from app.domain.prediction import PredictionRead, RecentPredictionsResponse
 from app.services.mappers import prediction_to_read
 
@@ -75,8 +76,18 @@ class PredictionService:
         if updated is None:
             raise LookupError(f"Prediction {pred_id} was not found.")
 
-        # Member B integration point: call the audit writer here when it is ready.
-        _ = self._audit
+        if self._audit is not None:
+            await self._audit.record(
+                actor_id=actor_id,
+                action=AuditAction.RELABEL,
+                target=f"prediction:{pred_id}",
+                metadata=json.dumps({
+                    "old_label": prediction.predicted_label,
+                    "new_label": new_label,
+                    "batch_id": updated.batch_id,
+                    "filename": prediction.filename,
+                }),
+            )
 
         await self._cache.invalidate_after_relabel(updated.batch_id)
         return prediction_to_read(updated, self._settings.low_confidence_threshold)

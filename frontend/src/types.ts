@@ -51,7 +51,7 @@ export interface AuditEntry {
   actor_id: number;
   action: string;
   target: string;
-  metadata_: Record<string, unknown> | null;
+  metadata_: string | Record<string, unknown> | null;
   timestamp: string;
 }
 

@@ -175,11 +175,52 @@ function UsersPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// Audit Log helpers
+// ---------------------------------------------------------------------------
+
+const ACTION_META: Record<string, { label: string; color: string }> = {
+  role_change: { label: "Role Changed", color: "bg-purple-50 text-purple-700 border-purple-100" },
+  relabel:     { label: "Relabeled",    color: "bg-amber-50 text-amber-700 border-amber-100" },
+  batch_state_change: { label: "Batch Updated", color: "bg-blue-50 text-blue-700 border-blue-100" },
+};
+
+function parseDetails(entry: AuditEntry, userMap: Record<number, string>): string {
+  let meta: Record<string, string> | null = null;
+  if (entry.metadata_) {
+    try {
+      meta = (typeof entry.metadata_ === "string"
+        ? JSON.parse(entry.metadata_)
+        : entry.metadata_) as Record<string, string>;
+    } catch {
+      meta = null;
+    }
+  }
+
+  if (entry.action === "role_change" && meta) {
+    const targetId = parseInt(entry.target.replace("user:", ""), 10);
+    const targetEmail = userMap[targetId] ?? `User #${targetId}`;
+    return `${targetEmail}: ${meta.old_role} → ${meta.new_role}`;
+  }
+
+  if (entry.action === "relabel" && meta) {
+    const file = meta.filename ? `"${meta.filename}"` : entry.target;
+    return `${file}: ${meta.old_label} → ${meta.new_label}`;
+  }
+
+  if (entry.action === "batch_state_change" && meta) {
+    return `Batch #${entry.target.replace("batch:", "")}: ${meta.old_status ?? "?"} → ${meta.new_status ?? "?"}`;
+  }
+
+  return entry.target;
+}
+
+// ---------------------------------------------------------------------------
 // Audit Log
 // ---------------------------------------------------------------------------
 
 function AuditLogPanel() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [userMap, setUserMap] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -187,8 +228,9 @@ function AuditLogPanel() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getAuditLog();
+      const [data, users] = await Promise.all([getAuditLog(), getUsers()]);
       setEntries(data);
+      setUserMap(Object.fromEntries(users.map((u) => [Number(u.id), u.email])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load audit log.");
     } finally {
@@ -196,18 +238,20 @@ function AuditLogPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    void fetchAudit();
-  }, [fetchAudit]);
+  useEffect(() => { void fetchAudit(); }, [fetchAudit]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Audit Log</h2>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">Audit Log</h2>
+          <p className="text-xs text-gray-400 mt-0.5">All role changes and prediction corrections.</p>
+        </div>
         <button
           onClick={() => void fetchAudit()}
-          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
         >
+          <RefreshCw className="w-3.5 h-3.5" />
           Refresh
         </button>
       </div>
@@ -230,47 +274,40 @@ function AuditLogPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left font-semibold text-gray-600 px-5 py-3 whitespace-nowrap">
-                  Time
-                </th>
-                <th className="text-left font-semibold text-gray-600 px-5 py-3 whitespace-nowrap">
-                  Actor ID
-                </th>
-                <th className="text-left font-semibold text-gray-600 px-5 py-3">
-                  Action
-                </th>
-                <th className="text-left font-semibold text-gray-600 px-5 py-3">
-                  Target
-                </th>
-                <th className="text-left font-semibold text-gray-600 px-5 py-3">
-                  Details
-                </th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3 whitespace-nowrap">Time</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Who</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">Event</th>
+                <th className="text-left font-semibold text-gray-600 px-5 py-3">What Happened</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3 text-gray-500 whitespace-nowrap text-xs">
-                    {formatDateTime(entry.timestamp)}
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">
-                    {String(entry.actor_id)}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="inline-block text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full">
-                      {entry.action}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-gray-700 text-xs font-mono">
-                    {entry.target}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-gray-500 max-w-xs truncate">
-                    {entry.metadata_
-                      ? JSON.stringify(entry.metadata_)
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry) => {
+                const actionMeta = ACTION_META[entry.action] ?? {
+                  label: entry.action,
+                  color: "bg-gray-50 text-gray-600 border-gray-200",
+                };
+                const actorEmail = userMap[entry.actor_id] ?? `User #${entry.actor_id}`;
+                const details = parseDetails(entry, userMap);
+
+                return (
+                  <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-5 py-3.5 text-xs text-gray-400 whitespace-nowrap">
+                      {formatDateTime(entry.timestamp)}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-gray-700 font-medium">
+                      {actorEmail}
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`inline-block text-xs font-semibold border px-2 py-0.5 rounded-full whitespace-nowrap ${actionMeta.color}`}>
+                        {actionMeta.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-gray-600">
+                      {details}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
