@@ -16,6 +16,11 @@ class AuditService:
     """
 
     def __init__(self, audit_repo: AuditRepository) -> None:
+        """Store the audit repository dependency.
+
+        Args:
+            audit_repo: Repository responsible for audit_log SQL.
+        """
         self._audit_repo = audit_repo
 
     async def record(
@@ -36,6 +41,7 @@ class AuditService:
         Returns:
             The created audit entry as a domain model.
         """
+        # REPOSITORY CALL: persist immutable audit event.
         audit_entry = await self._audit_repo.create(
             actor_id=actor_id,
             action=action.value,
@@ -52,6 +58,7 @@ class AuditService:
         Returns:
             Audit log entries converted into domain models.
         """
+        # REPOSITORY CALL: load recent audit rows for admin/auditor views.
         entries = await self._audit_repo.list_recent()
 
         # Convert each ORM row into a Pydantic domain model before returning.

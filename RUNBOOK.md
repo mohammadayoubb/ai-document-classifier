@@ -145,7 +145,90 @@ if it fails — do not merge a model change without running it first.
 
 ---
 
-## 7. Check logs
+## 7. Run the latency budget demo
+
+Use this before the demo to prove the committed latency budgets:
+
+```bash
+python scripts/benchmark.py
+```
+
+Run it from the project root while the Docker Compose stack is already up.
+The script is Docker-first: it does not require local installs of `torch`,
+`redis`, `paramiko`, or `httpx`. Local Python only orchestrates the benchmark;
+the app containers do the app-specific work.
+
+What the script measures:
+
+| Metric | Budget | Measurement path |
+|--------|--------|------------------|
+| API cached reads p95 | < 50 ms | warms `GET /batches`, then repeats authenticated reads |
+| API uncached reads p95 | < 200 ms | clears Redis batch-list cache before each authenticated read |
+| Inference per document p95 | < 1.0 s | runs the golden images through ConvNeXt inside the `api` container |
+| SFTP to `GET /batches/{id}` p95 | < 10 s | copies a single golden image into SFTP, then polls the API until completed |
+
+How to read the Admin latency cards:
+
+| Card | What the large number means | Why it matters |
+|------|-----------------------------|----------------|
+| Inference per document | p95 time for one document classification only, measured across the 50 golden images inside the app container | Proves the ConvNeXt CPU prediction step is under the 1 second budget |
+| API cached reads | p95 time for authenticated `GET /batches` after Redis has already cached that list response | Proves the normal dashboard/list browsing path is very fast when cache is warm |
+| API uncached reads | p95 time for authenticated `GET /batches` after the script deletes the Redis batch-list cache before every request | Proves the API and database path are still fast when Redis cannot serve the response |
+| SFTP to `GET /batches/{id}` | p95 time from dropping one document into SFTP until the completed batch is visible from the API | Proves the full pipeline works: SFTP poller, MinIO upload, RQ queue, worker inference, DB write, cache invalidation, and API read |
+
+`p95 target < 1000 ms · 50 samples` means:
+
+- `p95`: the 95th percentile, so 95% of measured samples were at or below the displayed value.
+- `target < 1000 ms`: the committed budget for that metric. PASS means the measured p95 is below this number.
+- `50 samples`: the script measured 50 individual inference runs, one for each golden image.
+
+The SFTP end-to-end number is expected to be much larger than the other cards.
+It is not just model inference. It includes waiting for the SFTP poller to
+notice the file, copying the file into MinIO, creating a batch, queueing an RQ
+job, running inference, writing the prediction, invalidating cache, and polling
+the API until `GET /batches/{id}` shows the completed result. A value around
+2-4 seconds is healthy for this demo because the committed budget is 10 seconds.
+
+The terminal prints a PASS/FAIL/SKIP table. The same results are also written to:
+
+```text
+frontend/public/latency-results.json
+```
+
+The Admin Latency tab does not run the benchmark. It only displays the latest
+saved JSON file. The normal demo flow is:
+
+```text
+Run python scripts/benchmark.py -> open Admin -> Latency -> click Refresh if needed
+```
+
+UI placement: latency results live as an Admin subpage next to Users and Audit
+Log. That keeps the normal document-review dashboard focused while still making
+the demo evidence easy to find. If the project later adds more operational
+metrics, move this tab into a dedicated Metrics/Operations page linked next to
+Dashboard and Admin.
+
+If the benchmark user is different from the default, set credentials explicitly:
+
+```bash
+BENCH_EMAIL="admin@example.com" BENCH_PASSWORD="Admin-password" python scripts/benchmark.py
+```
+
+Useful optional knobs:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `BENCH_API_BASE` | `http://localhost:8000` | API base URL |
+| `BENCH_API_SAMPLES` | `30` | cached/uncached API samples |
+| `BENCH_E2E_SAMPLES` | `3` | SFTP end-to-end samples |
+| `BENCH_TOKEN` | unset | reuse an existing JWT instead of logging in |
+
+The script creates temporary benchmark files/jobs with the `latency_` prefix
+and cleans only those files/jobs before and after the SFTP measurement.
+
+---
+
+## 8. Check logs
 
 **All services together (live stream):**
 ```bash
@@ -174,7 +257,7 @@ docker compose exec api cat logs/app.log
 
 ---
 
-## 8. Restart a single service
+## 9. Restart a single service
 
 ```bash
 docker compose restart worker        # restart inference worker
@@ -187,7 +270,50 @@ The API and workers refuse to restart if Vault is unreachable — check
 
 ---
 
-## 9. Swap model weights
+## 10. Demo Vault startup refusal safely
+
+Use this in the demo to prove the API refuses to start when Vault authentication
+is wrong, without breaking the already-running stack.
+
+```bash
+docker compose run --rm \
+  -e VAULT_TOKEN=wrong-token \
+  api \
+  python -c 'import asyncio
+from types import SimpleNamespace
+from app.main import lifespan
+async def main():
+    app = SimpleNamespace(state=SimpleNamespace())
+    async with lifespan(app):
+        print("should not reach")
+asyncio.run(main())'
+```
+
+What this does:
+
+- Starts a temporary one-off `api` container.
+- Overrides only that container's `VAULT_TOKEN` with `wrong-token`.
+- Runs the same FastAPI lifespan startup checks used by the real API.
+- Fails before serving requests because Vault authentication does not work.
+- Leaves the normal running API container untouched.
+
+Expected result: the command should fail before printing `should not reach`,
+with an error like:
+
+```text
+RuntimeError: Vault is unreachable or the configured token is invalid.
+```
+
+Demo explanation:
+
+```text
+This temporary API container has a bad Vault token. Startup refuses before the
+app can serve requests, proving secrets must be available from Vault at boot.
+```
+
+---
+
+## 11. Swap model weights
 
 1. Stop the worker and api (they hold the model in memory):
    ```bash
@@ -217,7 +343,7 @@ any requests. If it fails, check `docker compose logs api`.
 
 ---
 
-## 10. Tear down completely
+## 12. Tear down completely
 
 ```bash
 docker compose down -v    # -v removes all named volumes (wipes DB, MinIO, SFTP data)
@@ -228,7 +354,7 @@ a completely clean slate (e.g., before a demo).
 
 ---
 
-## 11. Common problems
+## 13. Common problems
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|

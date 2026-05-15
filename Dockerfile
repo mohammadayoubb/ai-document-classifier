@@ -20,7 +20,7 @@ FROM base AS api
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS worker
-CMD ["python", "-m", "app.workers.inference"]
+CMD ["sh", "-c", "python -m app.workers.inference --verify-startup && rq worker --url ${REDIS_URL:-redis://redis:6379}"]
 
 FROM base AS sftp-ingest
 CMD ["python", "-m", "app.workers.ingest"]

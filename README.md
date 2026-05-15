@@ -18,6 +18,7 @@ authenticated users browse and review results through a permission-gated API.
 | **Tag** | `v0.1.0-week6` |
 | **Backbone** | ConvNeXt Tiny — `ConvNeXt_Tiny_Weights.IMAGENET1K_V1` |
 | **Freeze policy** | Partial unfreeze |
+| **Required test top-1** | ≥ 80.00% |
 | **Test top-1** | 85.29% |
 | **Test top-5** | 97.34% |
 | **Worst class** | 72.78% — `scientific_report` |
@@ -103,3 +104,13 @@ Committed targets (demonstrated in demo):
 | API uncached reads (p95) | < 200 ms | `GET /batches` after cache flush |
 | Inference per document (p95) | < 1.0 s | CPU, ConvNeXt Tiny, single document |
 | End-to-end (SFTP drop → API) | < 10 s | `docker cp` → `GET /batches/{id}` = completed |
+
+Run the demo benchmark from the project root after `docker compose up --build`:
+
+```bash
+python scripts/benchmark.py
+```
+
+The script prints the PASS/FAIL table and writes the latest UI payload to
+`frontend/public/latency-results.json`. The Admin page displays that saved
+file; it does not run the benchmark automatically.

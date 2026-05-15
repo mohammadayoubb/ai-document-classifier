@@ -2,10 +2,12 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Eye,
   ImageOff,
   Loader2,
   RefreshCw,
   Tag,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -15,8 +17,7 @@ import Navbar from "../components/Navbar";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import type { BatchDetail, Prediction } from "../types";
-
-const MINIO_BASE = "http://localhost:9000/overlays";
+import { buildOverlayUrl } from "../utils/overlay";
 
 const RVL_CDIP_LABELS = [
   "letter",
@@ -107,7 +108,7 @@ function RelabelForm({ prediction, onSuccess }: RelabelFormProps) {
         </select>
         <button
           type="submit"
-          disabled={isSubmitting || selectedLabel === prediction.predicted_label}
+          disabled={isSubmitting}
           className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
         >
           {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -122,12 +123,16 @@ interface PredictionCardProps {
   prediction: Prediction;
   canRelabel: boolean;
   onUpdate: (updated: Prediction) => void;
+  onViewDocument: (prediction: Prediction) => void;
 }
 
-function PredictionCard({ prediction, canRelabel, onUpdate }: PredictionCardProps) {
-  const overlayUrl = prediction.overlay_key
-    ? `${MINIO_BASE}/${prediction.overlay_key}`
-    : null;
+function PredictionCard({
+  prediction,
+  canRelabel,
+  onUpdate,
+  onViewDocument,
+}: PredictionCardProps) {
+  const overlayUrl = buildOverlayUrl(prediction.overlay_key);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -193,7 +198,19 @@ function PredictionCard({ prediction, canRelabel, onUpdate }: PredictionCardProp
 
           {/* Overlay image */}
           <div>
-            <p className="text-xs text-gray-500 font-medium mb-2">Classification Overlay</p>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs text-gray-500 font-medium">Classification Overlay</p>
+              {overlayUrl && (
+                <button
+                  type="button"
+                  onClick={() => onViewDocument(prediction)}
+                  className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold px-2 py-1 rounded-md border border-indigo-100 hover:bg-indigo-50 transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  View document
+                </button>
+              )}
+            </div>
             {overlayUrl ? (
               <img
                 src={overlayUrl}
@@ -228,6 +245,54 @@ function PredictionCard({ prediction, canRelabel, onUpdate }: PredictionCardProp
   );
 }
 
+interface DocumentViewerProps {
+  prediction: Prediction;
+  onClose: () => void;
+}
+
+function DocumentViewer({ prediction, onClose }: DocumentViewerProps) {
+  const overlayUrl = buildOverlayUrl(prediction.overlay_key);
+  const displayLabel =
+    prediction.is_relabeled && prediction.relabeled_to
+      ? prediction.relabeled_to
+      : prediction.predicted_label;
+
+  if (!overlayUrl) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto">
+      <div className="mx-auto mt-8 w-full max-w-5xl bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-100">
+          <div className="min-w-0">
+            <p className="text-xs text-gray-400 font-mono truncate">{prediction.filename}</p>
+            <h2 className="text-lg font-bold text-gray-900 capitalize mt-1">{displayLabel}</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              AI label: {prediction.predicted_label} · Confidence{" "}
+              {(prediction.confidence * 100).toFixed(1)}%
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            aria-label="Close document viewer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="bg-gray-100 p-4">
+          <img
+            src={overlayUrl}
+            alt={`Large overlay for ${prediction.filename}`}
+            className="mx-auto max-h-[72vh] w-full object-contain rounded-lg border border-gray-200 bg-white"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BatchDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -235,6 +300,7 @@ export default function BatchDetailPage() {
   const [batch, setBatch] = useState<BatchDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerPrediction, setViewerPrediction] = useState<Prediction | null>(null);
 
   const fetchBatch = useCallback(async () => {
     if (!id) return;
@@ -270,6 +336,12 @@ export default function BatchDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      {viewerPrediction && (
+        <DocumentViewer
+          prediction={viewerPrediction}
+          onClose={() => setViewerPrediction(null)}
+        />
+      )}
 
       <main className="pt-14">
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -365,6 +437,7 @@ export default function BatchDetailPage() {
                       prediction={prediction}
                       canRelabel={canRelabel}
                       onUpdate={handlePredictionUpdate}
+                      onViewDocument={setViewerPrediction}
                     />
                   ))}
                 </div>

@@ -1,4 +1,8 @@
-"""Prediction domain models returned by services and future routes."""
+"""Prediction domain models — Pydantic shapes for classifier output.
+
+Services convert database prediction rows into these models after decoding
+JSON fields and calculating review status.
+"""
 
 from datetime import datetime
 

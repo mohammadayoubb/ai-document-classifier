@@ -158,6 +158,21 @@ def test_successful_relabel_calls_repo_and_invalidates_related_caches() -> None:
     asyncio.run(exercise())
 
 
+def test_relabel_accepts_same_label_as_human_confirmation() -> None:
+    async def exercise() -> None:
+        repo = FakePredictionRepo(make_prediction(confidence=0.31))
+        service = PredictionService(repo, CacheAdapter(prefix="test"), settings=make_settings())
+
+        result = await service.relabel(1, "invoice", actor_id=7)
+
+        assert repo.relabel_calls == 1
+        assert result.is_relabeled is True
+        assert result.relabeled_to == result.predicted_label
+        assert result.needs_review is False
+
+    asyncio.run(exercise())
+
+
 def test_worker_prediction_creation_marks_low_confidence_as_review_needed() -> None:
     async def exercise() -> None:
         repo = FakePredictionRepo()

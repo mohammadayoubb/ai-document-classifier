@@ -31,8 +31,6 @@ services:
     build:
       context: .
       target: worker
-    # rq worker reads RQ_REDIS_URL from the environment; --url is explicit fallback.
-    command: rq worker --url ${REDIS_URL:-redis://redis:6379}
     env_file: .env
     environment:
       - VAULT_ADDR=http://vault:8200

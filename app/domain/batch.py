@@ -1,4 +1,8 @@
-"""Batch domain models."""
+"""Batch domain models — Pydantic shapes returned by the service layer.
+
+These classes define the API-facing structure for batch list/detail data while
+staying separate from SQLAlchemy ORM models.
+"""
 
 import enum
 from datetime import datetime

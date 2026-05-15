@@ -1,4 +1,8 @@
-"""Audit log SQL repository — data access only, no business logic."""
+"""Audit log SQL repository — owns only database reads/writes for audit rows.
+
+Services decide when an action is audit-worthy. This repository only persists
+and reads immutable audit records.
+"""
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +18,11 @@ class AuditRepository:
     """
 
     def __init__(self, session: AsyncSession) -> None:
+        """Store the SQLAlchemy session used by audit queries.
+
+        Args:
+            session: Async SQLAlchemy session owned by the caller.
+        """
         self._session = session
 
     async def create(
@@ -41,10 +50,10 @@ class AuditRepository:
             metadata_=metadata,
         )
 
+        # DB WRITE: stage immutable audit row in the current transaction.
         self._session.add(audit_entry)
 
-        # Flush makes generated values such as id and timestamp available
-        # before the service converts this ORM object into a domain model.
+        # DB CALL: flush makes id/timestamp available before domain mapping.
         await self._session.flush()
 
         return audit_entry
@@ -66,5 +75,6 @@ class AuditRepository:
             .offset(offset)
         )
 
+        # DB CALL: read recent audit rows for admin/auditor views.
         result = await self._session.execute(statement)
         return list(result.scalars().all())

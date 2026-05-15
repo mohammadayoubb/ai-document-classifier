@@ -1,4 +1,4 @@
-"""Audit log domain models.
+"""Audit log domain models — Pydantic shapes for governance events.
 
 These models represent audit log data outside the database layer.
 They are used as service return types and API response models.

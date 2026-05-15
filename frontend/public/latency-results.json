@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-05-15T14:59:38Z",
+  "source": "scripts/benchmark.py",
+  "items": [
+    {
+      "name": "Inference per document",
+      "budget_ms": 1000.0,
+      "samples": 50,
+      "p50_ms": 45.4,
+      "p95_ms": 57.5,
+      "p99_ms": 107.2,
+      "status": "PASS",
+      "reason": null
+    },
+    {
+      "name": "API cached reads",
+      "budget_ms": 50.0,
+      "samples": 30,
+      "p50_ms": 2.2,
+      "p95_ms": 2.5,
+      "p99_ms": 2.9,
+      "status": "PASS",
+      "reason": null
+    },
+    {
+      "name": "API uncached reads",
+      "budget_ms": 200.0,
+      "samples": 30,
+      "p50_ms": 6.6,
+      "p95_ms": 7.5,
+      "p99_ms": 11.7,
+      "status": "PASS",
+      "reason": null
+    },
+    {
+      "name": "SFTP to GET /batches/{id}",
+      "budget_ms": 10000.0,
+      "samples": 3,
+      "p50_ms": 3176.9,
+      "p95_ms": 5332.6,
+      "p99_ms": 5332.6,
+      "status": "PASS",
+      "reason": null
+    }
+  ]
+}

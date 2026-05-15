@@ -15,10 +15,10 @@ import { getBatch, getBatches, uploadDocument } from "../api/client";
 import Navbar from "../components/Navbar";
 import StatusBadge from "../components/StatusBadge";
 import type { Batch, BatchDetail } from "../types";
+import { buildOverlayUrl } from "../utils/overlay";
 
 const PAGE_SIZE = 20;
 const REFRESH_INTERVAL_MS = 5000;
-const MINIO_BASE = "http://localhost:9000/overlays";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -61,9 +61,7 @@ function ProcessingCard({ batchId, filename, onClose }: ProcessingCardProps) {
   }, [batchId]);
 
   const prediction = batch?.predictions?.[0];
-  const overlayUrl = prediction?.overlay_key
-    ? `${MINIO_BASE}/${prediction.overlay_key.replace("overlays/", "")}`
-    : null;
+  const overlayUrl = buildOverlayUrl(prediction?.overlay_key);
 
   const steps = [
     { label: "Uploaded", done: true },

@@ -32,12 +32,25 @@ class UserService:
         user_repo: UserRepository,
         audit_service: AuditService,
     ) -> None:
+        """Store service dependencies.
+
+        Args:
+            user_repo: Repository responsible for user SQL.
+            audit_service: Service responsible for audit log writes.
+        """
         self._user_repo = user_repo
         self._audit_service = audit_service
 
     async def list_users(self) -> list[UserDomain]:
-        """Return all registered users."""
+        """Return all registered users.
+
+        Returns:
+            All users converted to domain models.
+        """
+        # REPOSITORY CALL: load admin user-management table rows.
         users = await self._user_repo.list_all()
+
+        # DOMAIN MAP: services expose Pydantic models, not ORM objects.
         return [UserDomain.model_validate(u) for u in users]
 
     async def get_user_by_id(self, user_id: int) -> UserDomain:
@@ -52,6 +65,7 @@ class UserService:
         Raises:
             UserNotFoundError: If the user does not exist.
         """
+        # REPOSITORY CALL: load one user before mapping to domain model.
         user = await self._user_repo.get_by_id(user_id)
 
         if user is None:
@@ -81,6 +95,7 @@ class UserService:
             CannotDemoteLastAdminError: If the last active admin tries to
                 demote themselves.
         """
+        # REPOSITORY CALL: load target user before applying role rules.
         target_user = await self._user_repo.get_by_id(target_user_id)
 
         if target_user is None:
@@ -95,6 +110,7 @@ class UserService:
             and old_role == UserRole.ADMIN
             and new_role != UserRole.ADMIN
         ):
+            # REPOSITORY CALL: enforce "at least one admin" safety rule.
             admin_count = await self._user_repo.count_by_role(UserRole.ADMIN.value)
 
             if admin_count <= 1:
@@ -102,6 +118,7 @@ class UserService:
                     "The last active admin cannot demote themselves"
                 )
 
+        # REPOSITORY CALL: persist the role change.
         updated_user = await self._user_repo.update_role(
             user_id=target_user_id,
             new_role=new_role.value,
@@ -110,7 +127,7 @@ class UserService:
         if updated_user is None:
             raise UserNotFoundError(f"User {target_user_id} was not found")
 
-        # Role changes are audit-able events and must always be recorded.
+        # AUDIT CALL: role changes are audit-able events and must always be recorded.
         await self._audit_service.record(
             actor_id=actor_id,
             action=AuditAction.ROLE_CHANGE,
@@ -126,4 +143,5 @@ class UserService:
         # TODO: Inject CacheAdapter later and invalidate the target user's /users/me cache.
         # Cache invalidation belongs here in the service layer, never in routes or repositories.
 
+        # DOMAIN MAP: return a service/domain model to the route layer.
         return UserDomain.model_validate(updated_user)

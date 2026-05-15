@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertCircle,
   CheckCircle2,
   ClipboardList,
@@ -12,15 +13,36 @@ import Navbar from "../components/Navbar";
 import { useAuth } from "../context/AuthContext";
 import type { AuditEntry, User, UserRole } from "../types";
 
-type Tab = "users" | "audit";
+type Tab = "users" | "audit" | "latency";
 
 const ROLE_OPTIONS: UserRole[] = ["admin", "reviewer", "auditor"];
+
+interface LatencyMetric {
+  name: string;
+  budget_ms: number;
+  samples: number;
+  p50_ms: number | null;
+  p95_ms: number | null;
+  p99_ms: number | null;
+  status: "PASS" | "FAIL" | "SKIP";
+  reason: string | null;
+}
+
+interface LatencyResults {
+  generated_at: string | null;
+  source: string;
+  items: LatencyMetric[];
+}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function formatLatency(value: number | null): string {
+  return value === null ? "-" : `${value.toFixed(1)} ms`;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +339,107 @@ function AuditLogPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// Latency budgets
+// ---------------------------------------------------------------------------
+
+const LATENCY_STATUS_STYLE: Record<LatencyMetric["status"], string> = {
+  PASS: "bg-green-50 text-green-700 border-green-100",
+  FAIL: "bg-red-50 text-red-700 border-red-100",
+  SKIP: "bg-gray-50 text-gray-500 border-gray-200",
+};
+
+function LatencyBudgetsPanel() {
+  const [results, setResults] = useState<LatencyResults | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchResults = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/latency-results.json?ts=${Date.now()}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setResults((await response.json()) as LatencyResults);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load latency results.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchResults(); }, [fetchResults]);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-700">Latency Budgets</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Latest benchmark output from scripts/benchmark.py.
+          </p>
+        </div>
+        <button
+          onClick={() => void fetchResults()}
+          className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Refresh
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-10 gap-2 text-gray-400">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
+          Loading latency results…
+        </div>
+      ) : error ? (
+        <div className="px-5 py-4 text-sm text-red-700 bg-red-50 border-t border-red-100">
+          {error}
+        </div>
+      ) : !results || results.items.length === 0 ? (
+        <div className="px-5 py-10 text-center text-sm text-gray-400">
+          Run python scripts/benchmark.py to publish the latest latency results.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-5">
+            {results.items.map((metric) => (
+              <div key={metric.name} className="border border-gray-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs font-semibold text-gray-500 leading-5">
+                    {metric.name}
+                  </p>
+                  <span
+                    className={`text-xs font-semibold border px-2 py-0.5 rounded-full ${LATENCY_STATUS_STYLE[metric.status]}`}
+                  >
+                    {metric.status}
+                  </span>
+                </div>
+                <p className="text-2xl font-bold text-gray-900 mt-3">
+                  {formatLatency(metric.p95_ms)}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  p95 target &lt; {metric.budget_ms.toFixed(0)} ms · {metric.samples} samples
+                </p>
+                {metric.reason && (
+                  <p className="text-xs text-gray-500 mt-3 leading-5">{metric.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="px-5 py-3 border-t border-gray-100 text-xs text-gray-400">
+            Last generated:{" "}
+            {results.generated_at ? formatDateTime(results.generated_at) : "Not generated yet"}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Admin Page
 // ---------------------------------------------------------------------------
 
@@ -334,6 +457,11 @@ export default function AdminPage() {
       label: "Audit Log",
       icon: <ClipboardList className="w-4 h-4" />,
     },
+    {
+      id: "latency",
+      label: "Latency",
+      icon: <Activity className="w-4 h-4" />,
+    },
   ];
 
   return (
@@ -346,7 +474,7 @@ export default function AdminPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Manage users and view the audit trail.
+              Manage users, audit events, and latency evidence.
             </p>
           </div>
 
@@ -371,6 +499,7 @@ export default function AdminPage() {
           {/* Tab content */}
           {activeTab === "users" && <UsersPanel />}
           {activeTab === "audit" && <AuditLogPanel />}
+          {activeTab === "latency" && <LatencyBudgetsPanel />}
         </div>
       </main>
     </div>

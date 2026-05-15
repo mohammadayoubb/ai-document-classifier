@@ -22,6 +22,7 @@ Per-job lifecycle:
 import asyncio
 import io
 import json
+import sys
 
 import redis.asyncio as aioredis
 import structlog
@@ -54,6 +55,20 @@ def _get_model() -> torch.nn.Module:
         _model = load_and_verify(get_settings())
         log.info("inference.model.loaded")
     return _model
+
+# Worker startup now runs python -m app.workers.inference --verify-startup before rq worker in Dockerfile (line 23).
+def verify_worker_startup() -> None:
+    """Fail worker startup if required secrets or classifier artifacts are invalid."""
+    configure_logging()
+    settings = get_settings()
+
+    vault = VaultClient(addr=settings.vault_addr, token=settings.vault_token)
+    if not vault.is_reachable():
+        raise RuntimeError("Vault is unreachable — inference worker refusing to start")
+
+    settings.postgres_password = vault.get_secret("app", "postgres_password")
+    load_and_verify(settings)
+    log.info("inference.worker.startup_verified")
 
 
 def _generate_overlay(image_bytes: bytes, label: str, confidence: float) -> bytes:
@@ -245,3 +260,8 @@ def run_inference_job(
         storage_key=storage_key,
     )
     asyncio.run(_async_job_with_cleanup(batch_id, filename, storage_key))
+
+
+if __name__ == "__main__":
+    if "--verify-startup" in sys.argv:
+        verify_worker_startup()

@@ -1,4 +1,7 @@
-"""Initial document-classifier schema.
+"""Initial document-classifier schema migration.
+
+This migration owns the first database shape: users, batches, predictions,
+audit log rows, Casbin policies, and the batch status enum.
 
 Revision ID: 0001_initial_schema
 Revises:
@@ -25,7 +28,8 @@ def upgrade() -> None:
     (where the enum or some tables were created but alembic_version was not
     stamped) does not block a clean re-run.
     """
-    # Enum type — PostgreSQL DO...EXCEPTION is the only reliable way to
+    # DDL CALL: PostgreSQL enum type required by batches.status.
+    # PostgreSQL DO...EXCEPTION is the only reliable way to
     # create a type idempotently; CREATE TYPE lacks IF NOT EXISTS before PG 9.1,
     # and SQLAlchemy's create_type=False flag can be lost when the type object
     # is copied internally during op.create_table.
@@ -36,6 +40,7 @@ def upgrade() -> None:
         "END $$;"
     ))
 
+    # DDL CALL: users table used by auth, ownership, and role management.
     op.execute(sa.text("""
         CREATE TABLE IF NOT EXISTS users (
             id          SERIAL          PRIMARY KEY,
@@ -46,10 +51,12 @@ def upgrade() -> None:
             created_at  TIMESTAMPTZ     NOT NULL DEFAULT now()
         )
     """))
+    # DDL CALL: unique index enforces one account per email address.
     op.execute(sa.text(
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"
     ))
 
+    # DDL CALL: batches table groups one document classification request.
     op.execute(sa.text("""
         CREATE TABLE IF NOT EXISTS batches (
             id          SERIAL          PRIMARY KEY,
@@ -60,6 +67,7 @@ def upgrade() -> None:
         )
     """))
 
+    # DDL CALL: audit_log table stores immutable governance events.
     op.execute(sa.text("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id          SERIAL          PRIMARY KEY,
@@ -71,6 +79,7 @@ def upgrade() -> None:
         )
     """))
 
+    # DDL CALL: casbin_rule table stores RBAC policy loaded at API startup.
     op.execute(sa.text("""
         CREATE TABLE IF NOT EXISTS casbin_rule (
             id      SERIAL          PRIMARY KEY,
@@ -84,6 +93,7 @@ def upgrade() -> None:
         )
     """))
 
+    # DDL CALL: predictions table stores classifier output and human review data.
     op.execute(sa.text("""
         CREATE TABLE IF NOT EXISTS predictions (
             id              SERIAL          PRIMARY KEY,
@@ -101,13 +111,18 @@ def upgrade() -> None:
             created_at      TIMESTAMPTZ     NOT NULL DEFAULT now()
         )
     """))
+    # DDL CALL: index speeds batch-detail prediction lookups.
     op.execute(sa.text(
         "CREATE INDEX IF NOT EXISTS ix_predictions_batch_id ON predictions (batch_id)"
     ))
 
 
 def downgrade() -> None:
-    """Drop the initial application tables."""
+    """Drop the initial application tables.
+
+    Tables are dropped in dependency order so foreign keys do not block rollback.
+    """
+    # DDL CALL: reverse order mirrors table dependencies from predictions upward.
     op.execute(sa.text("DROP INDEX IF EXISTS ix_predictions_batch_id"))
     op.execute(sa.text("DROP TABLE IF EXISTS predictions"))
     op.execute(sa.text("DROP TABLE IF EXISTS casbin_rule"))

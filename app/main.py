@@ -1,5 +1,6 @@
 """FastAPI application entry point and lifespan resource manager."""
 
+import inspect
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,7 @@ from app.api.routes import audit, batches, predictions, users
 from app.auth.backend import auth_backend
 from app.auth.fastapi_users import fastapi_users
 from app.auth.schemas import AuthUserCreate, AuthUserRead
+from app.classifier.model import load_and_verify
 from app.config import get_settings
 from app.db.session import dispose_engine, init_engine
 from app.infra.blob import BlobStorage
@@ -78,9 +80,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # whether startup loaded the expected secret.
     app.state.jwt_signing_key = settings.jwt_signing_key
 
-    # TODO: Phase 7 — load_and_verify(settings) stores model in app.state.classifier.
-    # Do not add a fake classifier here. The app should only pass this check
-    # after the real classifier artifact integration exists.
+    # Phase 7 — classifier startup contract.
+    # Refuse to serve requests unless the committed classifier artifact is present,
+    # matches the model card SHA-256, and passes the configured quality gate.
+    app.state.classifier = load_and_verify(settings)
 
     # Phase 5 — Casbin startup contract.
     # The app must refuse to start if RBAC policies are missing.
@@ -106,7 +109,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("app.startup.complete")
     yield
 
-    await redis_client.aclose()
+    close_redis = getattr(redis_client, "aclose", redis_client.close)
+    close_result = close_redis()
+    if inspect.isawaitable(close_result):
+        await close_result
     await dispose_engine()
     log.info("app.shutdown.complete")
 

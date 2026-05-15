@@ -1,4 +1,4 @@
-"""User domain model.
+"""User domain models — Pydantic shapes for account and role data.
 
 This file contains Pydantic models used by the service and API layers.
 It must stay separate from SQLAlchemy ORM models.
