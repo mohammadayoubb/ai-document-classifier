@@ -6,11 +6,13 @@ No SQLAlchemy imports, no cache operations, no business logic.
 
 from typing import Annotated
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 
 from app.api.deps import get_batch_service, get_current_user
-from app.domain.batch import BatchDetail, BatchDomain, BatchStatus, PaginatedBatchSummary
+from app.domain.batch import BatchDetail, BatchStatus, PaginatedBatchSummary
 from app.domain.user import UserDomain
 from app.services.batch_service import BatchService
 
@@ -67,38 +69,42 @@ async def get_batch(
     return detail
 
 
-@router.post("/upload", response_model=BatchDomain, status_code=201)
+@router.post("/upload", status_code=202)
 async def upload_document(
     file: UploadFile,
     request: Request,
     user: Annotated[UserDomain, Depends(get_current_user)],
-    service: Annotated[BatchService, Depends(get_batch_service)],
-) -> BatchDomain:
-    """Upload a document directly and enqueue it for classification.
+) -> dict[str, str]:
+    """Drop an uploaded file into the SFTP uploads/ folder.
 
-    Accepts any image file (TIFF, PNG, JPEG). Validates size and format,
-    uploads to MinIO, creates a Batch row, and enqueues an RQ inference job.
-    This bypasses SFTP — useful for manual testing and the UI upload button.
+    The file is written into the SFTP server exactly as a scanner would drop
+    it. The ingest worker detects it within 1–5 seconds and runs the full
+    pipeline: validate → MinIO → Batch row → RQ inference job.
 
     Args:
         file: The uploaded image file.
-        request: FastAPI request (used to access app.state infra).
+        request: FastAPI request (used to access app.state.sftp).
         user: The authenticated user (any role).
-        service: Injected batch service.
 
     Returns:
-        The created BatchDomain with status=pending.
+        A dict confirming the filename queued for ingest.
 
     Raises:
-        HTTPException: 400 if the file is empty, too large, or not a valid image.
+        HTTPException: 400 if the file is empty.
+        HTTPException: 503 if the SFTP adapter is unavailable.
     """
     data = await file.read()
-    filename = file.filename or "upload"
-    batch = await service.create_batch_from_upload(
-        data=data,
-        filename=filename,
-        owner_id=user.id,
-        blob=request.app.state.blob,
-        queue=request.app.state.queue,
-    )
-    return batch
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    filename = file.filename or "upload.tiff"
+
+    try:
+        sftp = request.app.state.sftp
+        await asyncio.to_thread(sftp.upload_file, filename, data)
+    except Exception as exc:
+        log.exception("upload.sftp_write_failed", filename=filename, error=str(exc))
+        raise HTTPException(status_code=503, detail="Could not write file to SFTP — try again")
+
+    log.info("upload.sftp_dropped", filename=filename, user_id=str(user.id))
+    return {"status": "queued", "filename": filename}

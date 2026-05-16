@@ -617,6 +617,11 @@ def print_results(results: list[MetricResult]) -> None:
             f"{result.p50_ms:>7.1f}ms {result.p95_ms:>7.1f}ms "
             f"{result.p99_ms:>7.1f}ms {result.budget_ms:>7.0f}ms {status}"
         )
+        if not result.passed and result.name == "Inference per document":
+            print(
+                f"  WARNING: p95 {result.p95_ms:.0f}ms exceeds 1000ms target. "
+                "Consider switching from ConvNeXt Small → Tiny."
+            )
 
 
 def write_results_json(results: list[MetricResult]) -> None:

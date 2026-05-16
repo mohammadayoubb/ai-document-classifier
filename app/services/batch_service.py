@@ -4,17 +4,11 @@ Routes call this service instead of touching repositories, cache, blob storage,
 or queues directly.
 """
 
-import io
-import uuid
 from typing import Any, cast
-
-from PIL import Image
 
 from app.config import Settings, get_settings
 from app.domain.batch import BatchDetail, BatchDomain, BatchStatus, PaginatedBatchSummary
 from app.services.mappers import batch_to_domain, batch_to_summary, prediction_to_read
-
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class BatchService:
@@ -36,56 +30,6 @@ class BatchService:
         self._repo = repo
         self._cache = cache
         self._settings = settings or get_settings()
-
-    async def create_batch_from_upload(
-        self,
-        data: bytes,
-        filename: str,
-        owner_id: int,
-        blob: Any,
-        queue: Any,
-    ) -> BatchDomain:
-        """Validate, store, and enqueue an image uploaded directly via the API.
-
-        Args:
-            data: Raw uploaded image bytes.
-            filename: Original filename from the upload request.
-            owner_id: Authenticated user id that owns the batch.
-            blob: Blob storage adapter used for MinIO writes.
-            queue: Job queue adapter used to enqueue inference.
-
-        Returns:
-            Created batch as a domain model.
-
-        Raises:
-            ValueError: If the file is empty, too large, or not a valid image.
-        """
-        if len(data) == 0:
-            raise ValueError("File is empty.")
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise ValueError("File exceeds the 50 MB limit.")
-        try:
-            Image.open(io.BytesIO(data)).verify()
-        except Exception as exc:
-            raise ValueError("File is not a valid image.") from exc
-
-        request_id = str(uuid.uuid4())
-        storage_key = f"documents/{request_id}_{filename}"
-
-        # BLOB CALL: persist the original document before creating the batch row.
-        await blob.upload("documents", storage_key, data, "image/tiff")
-
-        # REPOSITORY CALL: create the pending batch inside the database.
-        batch = await self._repo.create(owner_id=owner_id, status=BatchStatus.pending)
-
-        # CACHE INVALIDATION: new batch must appear in list endpoints immediately.
-        await self._cache.invalidate_batches()
-
-        # QUEUE CALL: hand off CPU inference work to the RQ worker.
-        queue.enqueue_inference(batch.id, filename, storage_key, request_id)
-
-        # DOMAIN MAP: routes receive Pydantic domain models, not ORM objects.
-        return batch_to_domain(batch)
 
     async def create_batch(self, owner_id: int) -> BatchDomain:
         """Create a new pending batch and invalidate cached batch lists.

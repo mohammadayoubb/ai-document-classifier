@@ -1,5 +1,6 @@
 """FastAPI application entry point and lifespan resource manager."""
 
+import asyncio
 import inspect
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from app.infra.cache import CacheAdapter
 from app.infra.casbin_enforcer import verify_policies_loaded
 from app.infra.logging_setup import configure_logging
 from app.infra.queue import JobQueue
+from app.infra.sftp import SftpAdapter
 from app.infra.vault import VaultClient
 
 configure_logging()
@@ -106,9 +108,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         secret_key=settings.minio_secret_key,
     )
 
+    # SFTP adapter — used by the upload endpoint to drop files into uploads/
+    # so the ingest worker processes them through the normal SFTP flow.
+    sftp_adapter = SftpAdapter(
+        host=settings.sftp_host,
+        port=settings.sftp_port,
+        username=settings.sftp_user,
+        password=settings.sftp_password,
+    )
+    await asyncio.to_thread(sftp_adapter.connect)
+    app.state.sftp = sftp_adapter
+
     log.info("app.startup.complete")
     yield
 
+    await asyncio.to_thread(sftp_adapter.disconnect)
     close_redis = getattr(redis_client, "aclose", redis_client.close)
     close_result = close_redis()
     if inspect.isawaitable(close_result):

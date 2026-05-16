@@ -1,6 +1,5 @@
 """SFTP polling adapter for the document ingest worker."""
 
-import errno
 import io
 import stat
 
@@ -141,6 +140,21 @@ class SftpAdapter:
         self._ensure_dir("uploads/quarantine")
         self._sftp.rename(f"uploads/{filename}", f"uploads/quarantine/{filename}")
         log.warning("sftp.file.quarantined", filename=filename)
+
+    def upload_file(self, filename: str, data: bytes) -> None:
+        """Write bytes into the uploads/ directory on the SFTP server.
+
+        Used by the API upload endpoint to simulate a scanner drop so the
+        ingest worker picks it up through the normal SFTP flow.
+
+        Args:
+            filename: Target filename to create inside uploads/.
+            data: Raw file bytes to write.
+        """
+        if self._sftp is None:
+            raise RuntimeError("SFTP not connected — call connect() first")
+        self._sftp.putfo(io.BytesIO(data), f"uploads/{filename}")
+        log.info("sftp.file.uploaded", filename=filename, size_bytes=len(data))
 
     def _ensure_dir(self, path: str) -> None:
         """Create a directory on the SFTP server, ignoring if it already exists."""
